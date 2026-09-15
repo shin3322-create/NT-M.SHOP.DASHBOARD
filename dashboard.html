@@ -1567,7 +1567,7 @@ async function handleSABulkMonthFile(file){
       if(!id) continue;
       const summary = bucketSA(entries);
       const payload = {
-        date, branch: branchName(p.branch), branch_slug: p.branch,
+        date, branch_slug: p.branch,
         sa_name: p.name, sa_id: p.id,
         entries, summary,
         submitted_at: new Date().toISOString(),
@@ -1784,7 +1784,7 @@ async function saveSAEntry(){
   const id = saDocId(personId, date);
   const summary = bucketSA(cleaned);
   const payload = {
-    date, branch: branchName(p.branch), branch_slug: p.branch,
+    date, branch_slug: p.branch,
     sa_name: p.name, sa_id: p.id,
     entries: cleaned, summary,
     submitted_at: new Date().toISOString(),
@@ -1932,7 +1932,7 @@ async function saveRCEntry(){
   const id = rcDocId(personId, date);
   const summary = summarizeReception(cleaned);
   const payload = {
-    date, branch: branchName(p.branch), branch_slug: p.branch,
+    date, branch_slug: p.branch,
     manager: p.name, manager_id: p.id,
     entries: cleaned, summary,
     submitted_at: new Date().toISOString(),
