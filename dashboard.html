@@ -410,12 +410,16 @@
           <button class="btn ghost sm" type="button" id="sa-excel-btn">엑셀 업로드</button>
           <input type="file" id="sa-excel-input" accept=".xlsx,.xls,.csv" hidden>
         </div>
+        <div class="field" style="min-width:auto;">
+          <button class="btn ghost sm" type="button" id="sa-bulk-btn">기존 엑셀 일괄가져오기</button>
+          <input type="file" id="sa-bulk-input" accept=".xlsx,.xls" hidden>
+        </div>
         <div class="field" style="flex:1;"></div>
         <div class="field" style="min-width:auto;">
           <button class="btn primary" id="sa-save-btn">일마감 저장</button>
         </div>
       </div>
-      <div class="hint" style="margin-top:8px;">엑셀 업로드는 위에서 선택한 SA·일자의 RO 목록 뒤에 추가됩니다 (기존 목록은 지워지지 않음). 과거 날짜(예: 9월 14일 이전) 자료도 일자만 바꿔서 같은 방식으로 올릴 수 있습니다.</div>
+      <div class="hint" style="margin-top:8px;">엑셀 업로드는 위에서 선택한 SA·일자의 RO 목록 뒤에 추가됩니다 (기존 목록은 지워지지 않음). 과거 날짜(예: 9월 14일 이전) 자료도 일자만 바꿔서 같은 방식으로 올릴 수 있습니다.<br>"기존 엑셀 일괄가져오기"는 이전에 쓰시던 월별 엑셀(시트 이름이 1일, 2일 … 형태인 파일)을 그대로 올리면, 위에서 선택한 SA 앞으로 데이터가 있는 날짜를 모두 찾아 한 번에 저장합니다. 과거 자료를 한 번만 옮길 때 쓰시면 됩니다.</div>
     </div>
 
     <div class="card">
@@ -1490,6 +1494,103 @@ async function handleSAExcelFile(file){
     showToast("엑셀 파일을 읽는 중 오류가 발생했습니다");
   }
 }
+function isMonthSheetName(name){ return /^\d{1,2}\s*일$/.test(String(name).trim()); }
+function detectYearMonthFromSheetRows(rowsBySheet){
+  // RO 번호에서 연/월을 추출해 전체 시트에서 가장 많이 나오는 연월을 채택한다.
+  // (전달 말 RO가 다음 달 첫 날짜 시트에 한두 건 섞여 있어도 흔들리지 않도록 다수결로 판단)
+  const counts = new Map();
+  for(const rows of rowsBySheet){
+    for(const row of rows){
+      const ro = excelCellToText(row && row[1]);
+      const m = ro.match(/^RO(\d{2})(\d{2})/i);
+      if(!m) continue;
+      const key = m[1] + m[2];
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+  }
+  let best = null, bestCount = 0;
+  for(const [key, cnt] of counts.entries()){
+    if(cnt > bestCount){ bestCount = cnt; best = key; }
+  }
+  if(!best) return null;
+  return { year: 2000 + Number(best.slice(0,2)), month: Number(best.slice(2,4)) };
+}
+async function handleSABulkMonthFile(file){
+  if(!file) return;
+  const personId = document.getElementById("sa-person").value;
+  if(!personId){ showToast("먼저 담당 SA를 선택해 주세요"); return; }
+  const p = roster.sa.find(x=>x.id===personId);
+  if(!p){ showToast("SA 정보를 찾을 수 없습니다"); return; }
+  if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
+  const btn = document.getElementById("sa-bulk-btn");
+  try{
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type:"array", cellDates:true });
+    const daySheetNames = wb.SheetNames.filter(isMonthSheetName);
+    if(daySheetNames.length === 0){ showToast("1일, 2일 … 형태의 날짜별 시트를 찾지 못했습니다"); return; }
+
+    const rowsBySheet = daySheetNames.map(name => XLSX.utils.sheet_to_json(wb.Sheets[name], { header:1, defval:"" }));
+    let ym = detectYearMonthFromSheetRows(rowsBySheet);
+    if(!ym){
+      const cur = document.getElementById("sa-date").value;
+      if(!cur){ showToast("연/월을 자동으로 알 수 없습니다. 먼저 상단 '일자'를 한 번 선택한 뒤 다시 시도해 주세요"); return; }
+      const [y,m] = cur.split("-").map(Number);
+      ym = { year:y, month:m };
+    }
+
+    if(btn){ btn.disabled = true; btn.textContent = "가져오는 중…"; }
+    let savedDays = 0, savedRows = 0;
+    for(let i=0;i<daySheetNames.length;i++){
+      const dayNum = Number(String(daySheetNames[i]).replace(/[^0-9]/g,""));
+      if(!dayNum) continue;
+      const rows = rowsBySheet[i];
+      const entries = [];
+      for(let r=2; r<rows.length; r++){
+        const row = rows[r] || [];
+        const ro_no = excelCellToText(row[1]);
+        if(!ro_no) continue;
+        entries.push({
+          ro_no,
+          checkin_time: excelCellToHHMM(row[2]),
+          svc_type: matchFromList(row[5], SA_SERVICE_TYPES, "RETAIL"),
+          amount: excelCellToNumber(row[6]),
+          checkout_yn: excelCellToOX(row[3]),
+          stay_reason: matchFromList(row[4], STAY_REASONS, ""),
+          return_date: "",
+          return_reason: "",
+          loaner_used: "",
+        });
+      }
+      if(entries.length === 0) continue;
+      const date = `${ym.year}-${String(ym.month).padStart(2,"0")}-${String(dayNum).padStart(2,"0")}`;
+      const id = saDocId(personId, date);
+      if(!id) continue;
+      const summary = bucketSA(entries);
+      const payload = {
+        date, branch: branchName(p.branch), branch_slug: p.branch,
+        sa_name: p.name, sa_id: p.id,
+        entries, summary,
+        submitted_at: new Date().toISOString(),
+      };
+      try{
+        await db.doc("sa_days/"+id).set(payload);
+        savedDays++; savedRows += entries.length;
+        if(monthRangeOf(date).ym === currentMonthKey) saDocs.set(id, payload);
+      }catch(err){ console.error("bulk import failed for", date, err); }
+    }
+    if(btn){ btn.disabled = false; btn.textContent = "기존 엑셀 일괄가져오기"; }
+    if(savedDays === 0){
+      showToast("가져올 데이터가 있는 날짜를 찾지 못했습니다");
+    }else{
+      showToast(`${p.name} · ${ym.year}년 ${ym.month}월 중 ${savedDays}일치(${savedRows}건) 저장 완료`);
+      renderDashboard();
+    }
+  }catch(err){
+    console.error(err);
+    if(btn){ btn.disabled = false; btn.textContent = "기존 엑셀 일괄가져오기"; }
+    showToast("엑셀 파일을 읽는 중 오류가 발생했습니다");
+  }
+}
 async function handleRCExcelFile(file){
   if(!file) return;
   try{
@@ -1543,6 +1644,12 @@ function bindSAForm(){
   document.getElementById("sa-excel-input").addEventListener("change", (ev)=>{
     const f = ev.target.files[0];
     handleSAExcelFile(f);
+    ev.target.value = "";
+  });
+  document.getElementById("sa-bulk-btn").addEventListener("click", ()=>document.getElementById("sa-bulk-input").click());
+  document.getElementById("sa-bulk-input").addEventListener("change", (ev)=>{
+    const f = ev.target.files[0];
+    handleSABulkMonthFile(f);
     ev.target.value = "";
   });
 }
