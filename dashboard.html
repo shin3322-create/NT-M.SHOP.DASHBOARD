@@ -258,6 +258,7 @@
     border:1px solid var(--border); background:var(--surface); color:var(--text-secondary);
     padding:5px 10px; border-radius:999px; font-weight:700; cursor:pointer; font-size:11.5px;
   }
+  .stay-status-btn[data-status="입고대기"].active{ background:var(--critical-bg); border-color:var(--critical); color:var(--critical); }
   .stay-status-btn[data-status="부품대기"].active{ background:var(--warning-bg); border-color:var(--warning); color:var(--warning); }
   .stay-status-btn[data-status="수리 중"].active{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
   .stay-status-btn[data-status="수리완료"].active{ background:var(--good-bg); border-color:var(--good); color:var(--good); }
@@ -357,6 +358,14 @@
 
     <div class="card">
       <div class="section-head">
+        <h2>입력 수정 필요</h2>
+        <span class="hint" id="issues-hint">어드바이저·리셉션 입력 중 확인이 필요한 항목 · 이번 달 기준 · 문제를 해결하면 자동으로 목록에서 사라집니다</span>
+      </div>
+      <div class="table-wrap" style="margin-top:10px;"><table class="data" id="table-issues"></table></div>
+    </div>
+
+    <div class="card">
+      <div class="section-head">
         <h2>재입고 예정 차량</h2>
         <span class="hint">고객 재입고 일자가 등록된 RO · 이번 달 기준</span>
       </div>
@@ -429,6 +438,14 @@
 
     <div class="card">
       <div class="section-head">
+        <h2>입고 유형 분석</h2>
+        <span class="hint">선택한 지점·일자의 리셉션 입력 데이터를 기준으로 자동 계산됩니다</span>
+      </div>
+      <div id="sa-intake-analysis" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-head">
         <h2>RO 목록</h2>
         <button class="btn sm" id="sa-add-row">+ RO 추가</button>
       </div>
@@ -493,7 +510,7 @@
           <thead><tr>
             <th style="width:34px;">#</th><th style="width:88px;">예약 시간</th><th style="width:120px;">접수번호</th>
             <th>고객명</th><th>차량번호</th><th>모델</th><th style="width:150px;">서비스 타입</th>
-            <th style="width:110px;">상태</th><th style="width:100px;">픽딜/입고</th><th style="width:70px;">입고</th>
+            <th style="width:110px;">상태</th><th style="width:80px;">예약여부</th><th style="width:100px;">픽딜/입고</th><th style="width:70px;">입고</th>
             <th>사유/비고</th><th style="width:70px;">재예약</th><th style="width:36px;"></th>
           </tr></thead>
           <tbody id="rc-entry-body"></tbody>
@@ -932,6 +949,7 @@ function switchView(view){
     document.getElementById("nav-"+v).classList.toggle("active", v===view);
   });
   if(view==="dashboard") renderDashboard();
+  if(view==="sa") renderIntakeAnalysis();
   if(view==="loaner") loadLoanerEntries();
   if(view==="settings") renderSettings();
 }
@@ -1020,10 +1038,72 @@ function countUnshippedSA(branchId, filterFn){
   return count;
 }
 
+function collectInputIssues(){
+  const issues = [];
+  for(const doc of saDocs.values()){
+    (doc.entries||[]).forEach(e=>{
+      if(!e.ro_no) return;
+      const base = { kind:"sa", branch:doc.branch_slug, person:doc.sa_name, personId:doc.sa_id, date:doc.date, ref:e.ro_no };
+      if(!e.checkin_time) issues.push({ ...base, msg:"입고시간 누락" });
+      if(e.checkout_yn !== "O" && e.checkout_yn !== "X") issues.push({ ...base, msg:"출고여부(O/X) 미입력" });
+      if(e.loaner_used !== "O" && e.loaner_used !== "X") issues.push({ ...base, msg:"로너카(O/X) 미입력" });
+      if(!(Number(e.amount) > 0)) issues.push({ ...base, msg:"매출금액 미입력(0원)" });
+      if(e.checkout_yn === "X" && !e.stay_reason) issues.push({ ...base, msg:"숙박 사유 누락" });
+      if(e.return_date && !e.return_reason) issues.push({ ...base, msg:"재입고 사유 누락" });
+    });
+  }
+  for(const doc of receptionDocs.values()){
+    (doc.entries||[]).forEach(e=>{
+      if(!(e.customer || e.car_no || e.resv_no)) return;
+      const base = { kind:"reception", branch:doc.branch_slug, person:doc.manager, personId:doc.manager_id,
+                      date:doc.date, ref:e.resv_no || e.customer || e.car_no };
+      if(!e.customer || !e.car_no || !e.resv_no) issues.push({ ...base, msg:"필수 항목 누락(고객명/차량번호/접수번호)" });
+      if(e.checkin_yn !== "O" && e.checkin_yn !== "X") issues.push({ ...base, msg:"입고여부(O/X) 미입력" });
+      if(e.is_reserved !== "O" && e.is_reserved !== "X") issues.push({ ...base, msg:"예약여부(O/X) 미입력" });
+      if((e.status === "예약취소" || e.status === "No Show") && !e.cancel_reason) issues.push({ ...base, msg:"취소/노쇼 사유 누락" });
+      if(e.rebook === "O" && !e.rebook_dt) issues.push({ ...base, msg:"재예약일자 누락" });
+    });
+  }
+  issues.sort((a,b)=> b.date.localeCompare(a.date));
+  return issues;
+}
+function renderInputIssues(){
+  const wrap = document.getElementById("table-issues");
+  if(!wrap) return;
+  const issues = collectInputIssues();
+  const hint = document.getElementById("issues-hint");
+  if(hint){
+    hint.textContent = `어드바이저·리셉션 입력 중 확인이 필요한 항목 · 이번 달 기준 · 문제를 해결하면 자동으로 목록에서 사라집니다 (${issues.length}건)`;
+  }
+  const html = `
+    <thead><tr><th>구분</th><th>지점</th><th>담당자</th><th>일자</th><th>RO/접수번호</th><th>문제</th><th style="width:70px;"></th></tr></thead>
+    <tbody>
+      ${issues.map(r=>`
+        <tr data-kind="${r.kind}" data-id="${esc(r.personId||"")}" data-date="${esc(r.date)}">
+          <td>${r.kind==="sa"?"어드바이저":"리셉션"}</td>
+          <td><span class="pill ${r.branch}">${esc(branchName(r.branch))}</span></td>
+          <td>${esc(r.person||"")}</td>
+          <td class="num">${esc(r.date)}</td>
+          <td>${esc(r.ref||"")}</td>
+          <td style="color:var(--critical);font-weight:700;">${esc(r.msg)}</td>
+          <td><button class="btn ghost sm" data-goto>바로가기</button></td>
+        </tr>`).join("") || '<tr class="empty-row"><td colspan="7">확인이 필요한 항목이 없습니다</td></tr>'}
+    </tbody>`;
+  wrap.innerHTML = html;
+  wrap.querySelectorAll("[data-goto]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const tr = btn.closest("tr");
+      if(!tr.dataset.id){ showToast("담당자 정보를 찾을 수 없습니다"); return; }
+      goToInput(tr.dataset.kind, tr.dataset.id, tr.dataset.date);
+    });
+  });
+}
+
 function renderDashboard(){
   const today = todayKST();
   renderBranchCards(today);
   renderTracker(today);
+  renderInputIssues();
   renderReturnTable(today);
   renderStayingTable();
   renderLoanerSummary();
@@ -1270,9 +1350,8 @@ function renderBranchCards(today){
     const target = targets[b.id] || 0;
     const pct = target ? Math.min(1, mtdSA.total_sales/target) : 0;
     const hex = branchHex(b.id);
-    const week = weekRangeOf(today);
     const todayUnshipped = countUnshippedSA(b.id, d => d===today);
-    const weekUnshipped = countUnshippedSA(b.id, d => d>=week.start && d<=week.end);
+    const accumulatedUnshipped = countUnshippedSA(b.id, () => true);
     return `
       <div class="card branch-card" style="--branch-color:${hex};">
         <div class="b-name"><span class="dot"></span>${esc(b.name)} 지점</div>
@@ -1294,7 +1373,7 @@ function renderBranchCards(today){
         </div>
         <div class="mini-stats">
           <span>당일 미출고 <b class="num" style="${todayUnshipped>0?'color:var(--critical);':''}">${todayUnshipped}</b></span>
-          <span>주간누적 미출고 <b class="num" style="${weekUnshipped>0?'color:var(--warning);':''}">${weekUnshipped}</b></span>
+          <span>누적 미출고 <b class="num" style="${accumulatedUnshipped>0?'color:var(--warning);':''}">${accumulatedUnshipped}</b></span>
         </div>
       </div>`;
   }).join("");
@@ -1650,6 +1729,52 @@ async function handleRCExcelFile(file){
   }
 }
 
+const RC_SVC_LABELS = {
+  "Maintenance":"메인", "Recall/TC":"Recall/TC", "경수리":"경수리", "중수리":"중수리",
+  "진단":"진단", "소음":"소음", "사고수리":"사고수리", "입고 Proactive-RITA":"입고Proactive-RITA",
+};
+function analyzeIntake(entries){
+  const valid = (entries||[]).filter(e => e.customer || e.car_no || e.resv_no || e.status);
+  const reserved = valid.filter(e => e.is_reserved==="O" && e.status!=="예약취소");
+  const walkin = valid.filter(e => e.is_reserved==="X");
+  const checkedIn = reserved.filter(e => e.checkin_yn==="O").length;
+  const noshow = reserved.filter(e => e.checkin_yn==="X").length;
+  const rebookOk = valid.filter(e => e.rebook==="O").length;
+  const svcCounts = {};
+  RC_SERVICE_TYPES.forEach(t=> svcCounts[t]=0);
+  reserved.forEach(e=>{ if(e.svc_type in svcCounts) svcCounts[e.svc_type]++; });
+  return {
+    reserved_count: reserved.length, checkin_count: checkedIn, walkin_count: walkin.length,
+    noshow_count: noshow, rebook_ok: rebookOk, svc_counts: svcCounts,
+  };
+}
+async function renderIntakeAnalysis(){
+  const wrap = document.getElementById("sa-intake-analysis");
+  if(!wrap) return;
+  const branch = currentSABranch();
+  const date = document.getElementById("sa-date")?.value;
+  if(!branch || !date){ wrap.innerHTML = '<div class="hint">SA와 일자를 선택하면 표시됩니다</div>'; return; }
+  let entries = [];
+  if(db){
+    try{
+      const snap = await db.doc("reception_days/"+branch+"_"+date).get();
+      if(snap.exists) entries = snap.data().entries || [];
+    }catch(err){ console.warn(err); }
+  }
+  const s = analyzeIntake(entries);
+  wrap.innerHTML = `
+    <div class="summary-panel">
+      <div class="item"><span class="k">예약 차량</span><span class="v num">${s.reserved_count}건</span></div>
+      <div class="item"><span class="k">입고 차량</span><span class="v num">${s.checkin_count}건</span></div>
+      <div class="item"><span class="k">비예약 차량</span><span class="v num">${s.walkin_count}건</span></div>
+      <div class="item"><span class="k">노쇼</span><span class="v num">${s.noshow_count}건</span></div>
+      <div class="item"><span class="k">재예약 성공</span><span class="v num">${s.rebook_ok}건</span></div>
+    </div>
+    <div class="table-wrap" style="margin-top:10px;"><table class="data">
+      <thead><tr>${RC_SERVICE_TYPES.map(t=>`<th class="right">${esc(RC_SVC_LABELS[t]||t)}</th>`).join("")}</tr></thead>
+      <tbody><tr>${RC_SERVICE_TYPES.map(t=>`<td class="right num">${s.svc_counts[t]||0}</td>`).join("")}</tr></tbody>
+    </table></div>`;
+}
 function bindSAForm(){
   document.getElementById("sa-load-btn").addEventListener("click", loadSAEntry);
   document.getElementById("sa-person").addEventListener("change", loadSAEntry);
@@ -1679,6 +1804,7 @@ async function loadSAEntry(){
     }catch(err){ console.warn(err); }
   }
   renderSAEntryTable();
+  renderIntakeAnalysis();
 }
 function readSAEntriesFromDOM(){
   // values are kept live in saEntries via input handlers; this is just a safety no-op
@@ -1839,7 +1965,7 @@ function bindReceptionForm(){
   document.getElementById("rc-date").addEventListener("change", loadRCEntry);
   document.getElementById("rc-add-row").addEventListener("click", ()=>{
     rcEntries.push({ resv_dt:"", checkin_dt:"", resv_no:"", customer:"", car_no:"", vin:"", model:"",
-                      svc_type:"Maintenance", status:"예약접수", pickdel:"", checkin_yn:"", cancel_reason:"",
+                      svc_type:"Maintenance", status:"예약접수", is_reserved:"O", pickdel:"", checkin_yn:"", cancel_reason:"",
                       rebook:"", rebook_dt:"", receiver:"" });
     renderRCEntryTable();
   });
@@ -1880,7 +2006,7 @@ function timeOnly(v){
 function renderRCEntryTable(){
   const body = document.getElementById("rc-entry-body");
   if(rcEntries.length===0){
-    body.innerHTML = '<tr class="empty-row"><td colspan="13">예약 추가 버튼으로 오늘 접수된 예약을 입력하세요</td></tr>';
+    body.innerHTML = '<tr class="empty-row"><td colspan="14">예약 추가 버튼으로 오늘 접수된 예약을 입력하세요</td></tr>';
     updateRCSummary();
     return;
   }
@@ -1894,9 +2020,15 @@ function renderRCEntryTable(){
       <td><input type="text" data-f="model" value="${esc(e.model)}" placeholder="모델"></td>
       <td><select data-f="svc_type">${RC_SERVICE_TYPES.map(t=>`<option value="${t}" ${e.svc_type===t?"selected":""}>${t}</option>`).join("")}</select></td>
       <td><select data-f="status">${RC_STATUS.map(t=>`<option value="${t}" ${e.status===t?"selected":""}>${t}</option>`).join("")}</select></td>
+      <td>
+        <div class="toggle-oxo toggle-reserved">
+          <button type="button" class="on-o ${e.is_reserved==='O'?'active':''}" data-reserved-set="O">O</button>
+          <button type="button" class="on-x ${e.is_reserved==='X'?'active':''}" data-reserved-set="X">X</button>
+        </div>
+      </td>
       <td><select data-f="pickdel">${RC_PICKDEL.map(t=>`<option value="${t}" ${e.pickdel===t?"selected":""}>${t||"-"}</option>`).join("")}</select></td>
       <td>
-        <div class="toggle-oxo">
+        <div class="toggle-oxo toggle-checkin">
           <button type="button" class="on-o ${e.checkin_yn==='O'?'active':''}" data-set="O">O</button>
           <button type="button" class="on-x ${e.checkin_yn==='X'?'active':''}" data-set="X">X</button>
         </div>
@@ -1916,11 +2048,18 @@ function renderRCEntryTable(){
       renderRCEntryTable();
     });
   });
-  body.querySelectorAll(".toggle-oxo button").forEach(btn=>{
+  body.querySelectorAll(".toggle-checkin button").forEach(btn=>{
     btn.addEventListener("click", ()=>{
       const idx = Number(btn.closest("tr").dataset.idx);
       rcEntries[idx].checkin_yn = (rcEntries[idx].checkin_yn === btn.dataset.set) ? "" : btn.dataset.set;
       if(rcEntries[idx].checkin_yn !== "X") rcEntries[idx].cancel_reason = "";
+      renderRCEntryTable();
+    });
+  });
+  body.querySelectorAll(".toggle-reserved button").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const idx = Number(btn.closest("tr").dataset.idx);
+      rcEntries[idx].is_reserved = (rcEntries[idx].is_reserved === btn.dataset.reservedSet) ? "" : btn.dataset.reservedSet;
       renderRCEntryTable();
     });
   });
@@ -2140,11 +2279,11 @@ function buildBackupCSV(saDocsArr, rcDocsArr){
   });
   lines.push("");
   lines.push("=== 리셉션 일마감 ===");
-  lines.push(["날짜","지점","매니저","예약시간","접수번호","고객명","차량번호","모델","서비스타입","상태","픽딜/입고","입고여부","사유/비고","재예약"].map(csvEscape).join(","));
+  lines.push(["날짜","지점","매니저","예약시간","접수번호","고객명","차량번호","모델","서비스타입","상태","예약여부","픽딜/입고","입고여부","사유/비고","재예약"].map(csvEscape).join(","));
   rcDocsArr.forEach(data=>{
     (data.entries||[]).forEach(e=>{
       lines.push([data.date, branchName(data.branch_slug), data.manager, e.resv_dt, e.resv_no, e.customer, e.car_no,
-                  e.model, e.svc_type, e.status, e.pickdel, e.checkin_yn, e.cancel_reason, e.rebook].map(csvEscape).join(","));
+                  e.model, e.svc_type, e.status, e.is_reserved, e.pickdel, e.checkin_yn, e.cancel_reason, e.rebook].map(csvEscape).join(","));
     });
   });
   return lines.join("\r\n");
