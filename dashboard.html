@@ -1,0 +1,2051 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>National Motors AS DashBoard</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<style>
+  :root{
+    color-scheme: light;
+    --bg: #f9f9f7;
+    --surface: #ffffff;
+    --surface-2: #f3f2ee;
+    --text-primary: #16181c;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --border: rgba(11,11,11,0.10);
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --accent: #14335c;
+    --accent-ink: #ffffff;
+    --gunsan: #2a78d6;
+    --mokpo: #eb6834;
+    --seosan: #1baf7a;
+    --good: #0ca30c;
+    --warning: #b8790a;
+    --critical: #d03b3b;
+    --good-bg: rgba(12,163,12,0.12);
+    --warning-bg: rgba(250,178,25,0.16);
+    --critical-bg: rgba(208,59,59,0.10);
+    --shadow: 0 1px 2px rgba(11,11,11,0.06), 0 6px 20px rgba(11,11,11,0.05);
+    --radius: 14px;
+    --font: "Noto Sans KR", -apple-system, BlinkMacSystemFont, "Malgun Gothic", sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      color-scheme: dark;
+      --bg: #0d0d0d;
+      --surface: #1a1a19;
+      --surface-2: #232320;
+      --text-primary: #f5f5f3;
+      --text-secondary: #c3c2b7;
+      --text-muted: #93918a;
+      --border: rgba(255,255,255,0.10);
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --accent: #3987e5;
+      --accent-ink: #06131f;
+      --gunsan: #3987e5;
+      --mokpo: #d95926;
+      --seosan: #199e70;
+      --good: #23c623;
+      --warning: #fab219;
+      --critical: #e66767;
+      --good-bg: rgba(35,198,35,0.15);
+      --warning-bg: rgba(250,178,25,0.14);
+      --critical-bg: rgba(230,103,103,0.14);
+      --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    color-scheme: dark;
+    --bg: #0d0d0d;
+    --surface: #1a1a19;
+    --surface-2: #232320;
+    --text-primary: #f5f5f3;
+    --text-secondary: #c3c2b7;
+    --text-muted: #93918a;
+    --border: rgba(255,255,255,0.10);
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --accent: #3987e5;
+    --accent-ink: #06131f;
+    --gunsan: #3987e5;
+    --mokpo: #d95926;
+    --seosan: #199e70;
+    --good: #23c623;
+    --warning: #fab219;
+    --critical: #e66767;
+    --good-bg: rgba(35,198,35,0.15);
+    --warning-bg: rgba(250,178,25,0.14);
+    --critical-bg: rgba(230,103,103,0.14);
+    --shadow: 0 1px 2px rgba(0,0,0,0.4), 0 8px 24px rgba(0,0,0,0.35);
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; }
+  body{
+    background:var(--bg);
+    color:var(--text-primary);
+    font-family:var(--font);
+    padding-inline:16px;
+    padding-block:0 40px;
+    font-variant-numeric: tabular-nums;
+  }
+  h1,h2,h3,h4{ text-wrap:balance; margin:0; }
+  button{ font-family:inherit; }
+  table{ border-collapse:collapse; width:100%; }
+  input,select,textarea{ font-family:inherit; font-size:14px; }
+  .num{ font-variant-numeric: tabular-nums; }
+
+  /* ---------- shell ---------- */
+  .shell{ max-width:1180px; margin:0 auto; }
+  header.top{
+    position:sticky; top:0; z-index:20;
+    background:var(--bg);
+    padding-block:16px 10px;
+    display:flex; flex-wrap:wrap; gap:12px 20px;
+    align-items:flex-end; justify-content:space-between;
+    border-bottom:1px solid var(--border);
+    margin-bottom:18px;
+  }
+  .brand{ display:flex; flex-direction:column; gap:2px; }
+  .brand .eyebrow{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-muted); font-weight:700; }
+  .brand h1{ font-size:22px; font-weight:900; letter-spacing:-.01em; }
+  .brand .sub{ font-size:12.5px; color:var(--text-secondary); }
+  nav.tabs{ display:flex; gap:4px; background:var(--surface-2); padding:4px; border-radius:12px; }
+  nav.tabs button{
+    border:none; background:transparent; color:var(--text-secondary);
+    padding:8px 14px; border-radius:9px; font-size:13.5px; font-weight:700;
+    cursor:pointer; transition:background .15s, color .15s;
+  }
+  nav.tabs button:hover{ color:var(--text-primary); }
+  nav.tabs button.active{ background:var(--surface); color:var(--accent); box-shadow:var(--shadow); }
+  nav.tabs button:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible{
+    outline:2px solid var(--accent); outline-offset:2px;
+  }
+  .clock{ font-size:12.5px; color:var(--text-muted); text-align:right; }
+  .clock strong{ color:var(--text-primary); font-size:14px; display:block; }
+
+  section.view{ display:flex; flex-direction:column; gap:22px; }
+  section.view[hidden]{ display:none; }
+
+  /* ---------- cards / grid ---------- */
+  .card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    box-shadow:var(--shadow); padding:18px 18px;
+  }
+  .grid-3{ display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+  .grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width: 860px){ .grid-3{ grid-template-columns:1fr; } .grid-2{ grid-template-columns:1fr; } }
+
+  .section-head{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+  .section-head h2{ font-size:16px; font-weight:900; }
+  .section-head .hint{ font-size:12px; color:var(--text-muted); }
+
+  /* branch kpi card */
+  .branch-card{ display:flex; flex-direction:column; gap:12px; border-top:3px solid var(--branch-color,var(--accent)); }
+  .branch-card .b-name{ font-size:15px; font-weight:900; display:flex; align-items:center; gap:8px; }
+  .branch-card .b-name .dot{ width:9px;height:9px;border-radius:50%; background:var(--branch-color); }
+  .branch-card .b-figures{ display:flex; justify-content:space-between; gap:10px; }
+  .branch-card .fig{ display:flex; flex-direction:column; gap:2px; }
+  .branch-card .fig .label{ font-size:11px; color:var(--text-muted); font-weight:700; }
+  .branch-card .fig .value{ font-size:19px; font-weight:900; letter-spacing:-.01em; }
+  .branch-card .fig .value.today{ color:var(--branch-color); }
+  .progress-track{ height:8px; border-radius:5px; background:var(--surface-2); overflow:hidden; }
+  .progress-fill{ height:100%; border-radius:5px; background:var(--branch-color); transition:width .4s ease; }
+  .branch-card .target-block{ display:flex; flex-direction:column; gap:6px; }
+  .branch-card .target-row{ display:flex; justify-content:space-between; font-size:11.5px; color:var(--text-secondary); }
+  .branch-card .mini-stats{ display:flex; gap:14px; font-size:11.5px; color:var(--text-secondary); border-top:1px dashed var(--border); padding-top:10px; }
+  .branch-card .mini-stats b{ color:var(--text-primary); font-variant-numeric:tabular-nums; }
+
+  /* submission tracker */
+  .tracker-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:8px; }
+  .tracker-item{
+    display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:10px;
+    background:var(--surface-2); border:1px solid transparent; font-size:12.5px; cursor:pointer;
+    transition:border-color .15s;
+  }
+  .tracker-item:hover{ border-color:var(--border); }
+  .tracker-item .badge{ width:8px;height:8px;border-radius:50%; flex:none; }
+  .tracker-item .badge.done{ background:var(--good); box-shadow:0 0 0 3px var(--good-bg); }
+  .tracker-item .badge.pending{ background:var(--critical); box-shadow:0 0 0 3px var(--critical-bg); }
+  .tracker-item .who{ display:flex; flex-direction:column; overflow:hidden; }
+  .tracker-item .who .n{ font-weight:700; color:var(--text-primary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tracker-item .who .b{ color:var(--text-muted); font-size:11px; }
+
+  /* tables */
+  .table-wrap{ overflow-x:auto; border:1px solid var(--border); border-radius:12px; }
+  table.data{ min-width:560px; }
+  table.data th{
+    text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em;
+    color:var(--text-muted); font-weight:700; padding:9px 10px; background:var(--surface-2);
+    border-bottom:1px solid var(--border); position:sticky; top:0;
+  }
+  table.data td{ padding:9px 10px; font-size:13px; border-bottom:1px solid var(--border); color:var(--text-primary); }
+  table.data tr:last-child td{ border-bottom:none; }
+  table.data tr:hover td{ background:var(--surface-2); }
+  .right{ text-align:right; }
+  .center{ text-align:center; }
+  .pill{ display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:700; }
+  .pill.gunsan{ background:color-mix(in srgb, var(--gunsan) 16%, transparent); color:var(--gunsan); }
+  .pill.mokpo{ background:color-mix(in srgb, var(--mokpo) 16%, transparent); color:var(--mokpo); }
+  .pill.seosan{ background:color-mix(in srgb, var(--seosan) 16%, transparent); color:var(--seosan); }
+
+  /* charts */
+  .chart-legend{ display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--text-secondary); margin-bottom:6px; }
+  .chart-legend .item{ display:flex; align-items:center; gap:6px; }
+  .chart-legend .sw{ width:10px; height:10px; border-radius:3px; }
+  .chart-box{ position:relative; }
+  .chart-box svg{ width:100%; height:auto; display:block; overflow:visible; }
+  .chart-tooltip{
+    position:fixed; pointer-events:none; z-index:100; background:var(--text-primary); color:var(--bg);
+    padding:8px 10px; border-radius:8px; font-size:12px; line-height:1.5; box-shadow:var(--shadow);
+    opacity:0; transform:translateY(2px); transition:opacity .1s;
+    max-width:220px;
+  }
+  .chart-tooltip.show{ opacity:1; }
+  .chart-tooltip .t-date{ font-weight:700; margin-bottom:3px; }
+  .chart-tooltip .t-row{ display:flex; justify-content:space-between; gap:12px; }
+  .chart-tooltip .t-row .k{ display:flex; align-items:center; gap:5px; opacity:.85; }
+  .chart-tooltip .t-row .sw{ width:8px;height:8px;border-radius:2px; }
+
+  /* forms */
+  .field-row{ display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end; }
+  .field{ display:flex; flex-direction:column; gap:5px; min-width:150px; }
+  .field label{ font-size:11.5px; font-weight:700; color:var(--text-secondary); }
+  .field input, .field select{
+    padding:9px 10px; border-radius:9px; border:1px solid var(--border); background:var(--surface);
+    color:var(--text-primary);
+  }
+  .btn{
+    border:none; border-radius:9px; padding:9px 16px; font-size:13.5px; font-weight:700; cursor:pointer;
+    background:var(--surface-2); color:var(--text-primary); transition:filter .1s, transform .05s;
+  }
+  .btn:hover{ filter:brightness(0.95); }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .btn:hover{ filter:brightness(1.15); } }
+  :root[data-theme="dark"] .btn:hover{ filter:brightness(1.15); }
+  .btn:active{ transform:translateY(1px); }
+  .btn.primary{ background:var(--accent); color:var(--accent-ink); }
+  .btn.danger{ background:var(--critical-bg); color:var(--critical); }
+  .btn.ghost{ background:transparent; border:1px solid var(--border); }
+  .btn.sm{ padding:6px 10px; font-size:12px; border-radius:7px; }
+  .btn.icon{ padding:6px 9px; }
+  .btn[disabled]{ opacity:.5; cursor:not-allowed; }
+
+  .entry-table input, .entry-table select{
+    width:100%; padding:6px 7px; border-radius:7px; border:1px solid var(--border);
+    background:var(--surface); color:var(--text-primary); font-size:12.5px;
+  }
+  .entry-table td{ vertical-align:middle; }
+  .toggle-oxo{ display:flex; gap:3px; }
+  .toggle-oxo button{
+    border:1px solid var(--border); background:var(--surface); color:var(--text-secondary);
+    width:28px; height:28px; border-radius:7px; font-weight:900; cursor:pointer; font-size:12px;
+  }
+  .toggle-oxo button.on-o.active{ background:var(--good-bg); border-color:var(--good); color:var(--good); }
+  .toggle-oxo button.on-x.active{ background:var(--critical-bg); border-color:var(--critical); color:var(--critical); }
+
+  .summary-panel{ display:flex; flex-wrap:wrap; gap:10px 22px; }
+  .summary-panel .item{ display:flex; flex-direction:column; gap:2px; min-width:96px; }
+  .summary-panel .item .k{ font-size:11px; color:var(--text-muted); font-weight:700; }
+  .summary-panel .item .v{ font-size:17px; font-weight:900; }
+  .summary-panel .item .v.total{ color:var(--accent); }
+
+  .empty-row td{ text-align:center; color:var(--text-muted); padding:22px; font-size:13px; }
+
+  .toast{
+    position:fixed; left:50%; bottom:22px; transform:translate(-50%,12px);
+    background:var(--text-primary); color:var(--bg); padding:11px 18px; border-radius:10px;
+    font-size:13.5px; font-weight:700; box-shadow:var(--shadow); opacity:0; pointer-events:none;
+    transition:opacity .2s, transform .2s; z-index:200;
+  }
+  .toast.show{ opacity:1; transform:translate(-50%,0); }
+
+  .banner{
+    background:var(--warning-bg); border:1px solid var(--warning); color:var(--text-primary);
+    border-radius:12px; padding:11px 14px; font-size:13px; display:flex; gap:8px; align-items:center;
+  }
+
+  .settings-block{ display:flex; flex-direction:column; gap:10px; }
+  .roster-row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px 0; border-bottom:1px dashed var(--border); }
+  .roster-row:last-child{ border-bottom:none; }
+  .roster-row .name{ font-weight:700; min-width:80px; }
+  .muted{ color:var(--text-muted); }
+
+  footer.note{ text-align:center; color:var(--text-muted); font-size:11.5px; padding-top:6px; }
+
+  /* identity gate */
+  .identity-gate{ position:fixed; inset:0; background:rgba(11,11,11,0.6); z-index:500; display:flex; align-items:center; justify-content:center; padding:16px; }
+  .identity-card{ background:var(--surface); border-radius:16px; padding:22px; max-width:340px; width:100%; box-shadow:var(--shadow); }
+  .identity-role-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .identity-role-btn{ padding:14px 10px; text-align:center; }
+  #identity-label{ margin-left:6px; font-weight:900; color:var(--accent); }
+  .approval-row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:9px 0; border-bottom:1px dashed var(--border); }
+  .approval-row:last-child{ border-bottom:none; }
+  .approval-row select, .approval-row input{ padding:7px 8px; border-radius:7px; border:1px solid var(--border); background:var(--surface); color:var(--text-primary); font-size:12.5px; }
+</style>
+</head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="supabase-adapter.js"></script>
+<div id="app-loading" style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Noto Sans KR',sans-serif;color:#898781;">확인 중…</div>
+<div id="app-pending" hidden style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Noto Sans KR',sans-serif;">
+  <div style="max-width:360px;text-align:center;padding:24px;">
+    <h2 style="margin:0 0 8px;">승인 대기 중입니다</h2>
+    <p style="color:#898781;font-size:13.5px;">관리자가 계정을 승인하면 이용할 수 있습니다. 잠시 후 다시 로그인해 주세요.</p>
+    <button id="pending-logout-btn" style="margin-top:14px;padding:9px 16px;border-radius:9px;border:none;background:#14335c;color:#fff;font-weight:700;cursor:pointer;">로그아웃</button>
+  </div>
+</div>
+
+<div class="shell" id="app-shell" hidden>
+  <header class="top">
+    <div class="brand">
+      <span class="eyebrow">National Motors BMW · 군산 · 목포 · 서산</span>
+      <h1>일마감 현황판</h1>
+      <span class="sub">SA·리셉션 일마감 입력과 지점 매출·예약 현황을 한 곳에서</span>
+    </div>
+    <nav class="tabs" id="nav-tabs">
+      <button data-view="dashboard" class="active" id="nav-dashboard">대시보드</button>
+      <button data-view="sa" id="nav-sa">어드바이저 입력</button>
+      <button data-view="reception" id="nav-reception">리셉션 입력</button>
+      <button data-view="loaner" id="nav-loaner">로너카 관리</button>
+      <button data-view="settings" id="nav-settings">설정</button>
+    </nav>
+    <div class="clock">
+      <strong id="clock-date">-</strong>
+      <span id="clock-status">연결 중…<span id="identity-label"></span></span>
+      <button class="btn ghost sm" id="logout-btn" style="margin-top:6px;">로그아웃</button>
+    </div>
+  </header>
+
+  <div id="banner-slot"></div>
+
+  <!-- ===================== DASHBOARD ===================== -->
+  <section class="view" id="view-dashboard">
+    <div class="grid-3" id="branch-cards"></div>
+
+    <div class="card">
+      <div class="section-head">
+        <h2>오늘 일마감 제출 현황</h2>
+        <span class="hint" id="tracker-date-hint"></span>
+      </div>
+      <div class="tracker-grid" id="tracker-grid" style="margin-top:12px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-head">
+        <h2>재입고 예정 차량</h2>
+        <span class="hint">고객 재입고 일자가 등록된 RO · 이번 달 기준</span>
+      </div>
+      <div class="table-wrap" style="margin-top:10px;"><table class="data" id="table-return"></table></div>
+    </div>
+
+    <div class="card">
+      <div class="section-head">
+        <h2>로너카 사용 현황</h2>
+        <span class="hint" id="loaner-summary-hint"></span>
+      </div>
+      <div class="table-wrap" style="margin-top:10px;"><table class="data" id="table-loaner"></table></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="section-head"><h2>지점별 일별 매출 추이</h2><span class="hint">이번 달, 단위 만원</span></div>
+        <div class="chart-legend" id="legend-line"></div>
+        <div class="chart-box" id="chart-line-box"></div>
+      </div>
+      <div class="card">
+        <div class="section-head"><h2>서비스 유형별 매출</h2><span class="hint">이번 달 누계, 단위 만원</span></div>
+        <div class="chart-legend" id="legend-bar"></div>
+        <div class="chart-box" id="chart-bar-box"></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="section-head"><h2>SA별 이달 매출</h2><span class="hint" id="sa-table-hint"></span></div>
+        <div class="table-wrap" style="margin-top:10px;"><table class="data" id="table-sa"></table></div>
+      </div>
+      <div class="card">
+        <div class="section-head"><h2>리셉션별 이달 현황</h2><span class="hint" id="reception-table-hint"></span></div>
+        <div class="table-wrap" style="margin-top:10px;"><table class="data" id="table-reception"></table></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== SA INPUT ===================== -->
+  <section class="view" id="view-sa" hidden>
+    <div class="card">
+      <div class="section-head"><h2>어드바이저 일마감 입력</h2><span class="hint">RO 단위로 입력하면 매출 합계가 자동 계산됩니다 (해피콜 항목 없음)</span></div>
+      <div class="field-row" style="margin-top:12px;">
+        <div class="field">
+          <label for="sa-person">담당 SA</label>
+          <select id="sa-person"></select>
+        </div>
+        <div class="field">
+          <label for="sa-date">일자</label>
+          <input type="date" id="sa-date">
+        </div>
+        <div class="field" style="min-width:auto;">
+          <button class="btn ghost sm" id="sa-load-btn">불러오기</button>
+        </div>
+        <div class="field" style="flex:1;"></div>
+        <div class="field" style="min-width:auto;">
+          <button class="btn primary" id="sa-save-btn">일마감 저장</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-head">
+        <h2>RO 목록</h2>
+        <button class="btn sm" id="sa-add-row">+ RO 추가</button>
+      </div>
+      <div class="table-wrap" style="margin-top:10px;">
+        <table class="data entry-table" id="sa-entry-table">
+          <thead><tr>
+            <th style="width:34px;">#</th><th>RO 번호</th><th style="width:100px;">입고 시간</th>
+            <th style="width:150px;">서비스 종류</th><th style="width:130px;">매출 금액</th>
+            <th style="width:90px;">출고</th><th style="width:110px;">숙박 사유</th>
+            <th style="width:120px;">재입고 예정일</th><th style="width:110px;">재입고 사유</th>
+            <th style="width:70px;">로너카</th><th style="width:36px;"></th>
+          </tr></thead>
+          <tbody id="sa-entry-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-head"><h2>자동 계산 요약</h2><span class="hint">저장 전 미리보기</span></div>
+      <div class="summary-panel" id="sa-summary" style="margin-top:10px;"></div>
+    </div>
+  </section>
+
+  <!-- ===================== RECEPTION INPUT ===================== -->
+  <section class="view" id="view-reception" hidden>
+    <div class="card">
+      <div class="section-head"><h2>리셉션 일마감 입력</h2><span class="hint">예약 건 단위로 입력하면 입고·취소·픽딜 현황이 자동 집계됩니다 (노쇼콜 항목 없음)</span></div>
+      <div class="field-row" style="margin-top:12px;">
+        <div class="field">
+          <label for="rc-person">리셉션 매니저</label>
+          <select id="rc-person"></select>
+        </div>
+        <div class="field">
+          <label for="rc-date">일자</label>
+          <input type="date" id="rc-date">
+        </div>
+        <div class="field" style="min-width:auto;">
+          <button class="btn ghost sm" id="rc-load-btn">불러오기</button>
+        </div>
+        <div class="field" style="flex:1;"></div>
+        <div class="field" style="min-width:auto;">
+          <button class="btn primary" id="rc-save-btn">일마감 저장</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-head">
+        <h2>예약 목록</h2>
+        <button class="btn sm" id="rc-add-row">+ 예약 추가</button>
+      </div>
+      <div class="table-wrap" style="margin-top:10px;">
+        <table class="data entry-table" id="rc-entry-table">
+          <thead><tr>
+            <th style="width:34px;">#</th><th style="width:88px;">예약 시간</th><th style="width:120px;">접수번호</th>
+            <th>고객명</th><th>차량번호</th><th>모델</th><th style="width:150px;">서비스 타입</th>
+            <th style="width:110px;">상태</th><th style="width:100px;">픽딜/입고</th><th style="width:70px;">입고</th>
+            <th>사유/비고</th><th style="width:70px;">재예약</th><th style="width:36px;"></th>
+          </tr></thead>
+          <tbody id="rc-entry-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="section-head"><h2>자동 계산 요약</h2><span class="hint">저장 전 미리보기</span></div>
+      <div class="summary-panel" id="rc-summary" style="margin-top:10px;"></div>
+    </div>
+  </section>
+
+  <!-- ===================== LOANER CAR MANAGEMENT ===================== -->
+  <section class="view" id="view-loaner" hidden>
+    <div class="card">
+      <div class="section-head"><h2>지점별 로너카 관리</h2><span class="hint">차량번호·상태·대여 RO번호·출고일자·입고 예정일자·보증여부·대여 사유를 관리합니다</span></div>
+    </div>
+    <div id="loaner-branches" style="display:flex;flex-direction:column;gap:22px;"></div>
+  </section>
+
+  <!-- ===================== SETTINGS ===================== -->
+  <section class="view" id="view-settings" hidden>
+    <div class="card" id="settings-gate">
+      <div class="section-head"><h2>관리자 전용</h2><span class="hint">이 화면은 관리자 계정으로 로그인해야 열립니다</span></div>
+    </div>
+
+    <div id="settings-body" hidden style="display:flex;flex-direction:column;gap:22px;">
+      <div class="card">
+        <div class="section-head"><h2>직원 승인 / 역할 관리</h2><span class="hint">가입 신청한 직원을 승인하고 역할·지점·담당자를 지정합니다</span></div>
+        <div class="settings-block" id="settings-profiles" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-head"><h2>지점 목표 매출 (월)</h2><span class="hint">대시보드 달성률 계산 기준</span></div>
+        <div class="settings-block" id="settings-targets" style="margin-top:12px;"></div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="section-head"><h2>리셉션 매니저 명단</h2></div>
+          <div class="settings-block" id="settings-reception" style="margin-top:10px;"></div>
+          <div class="field-row" style="margin-top:12px;">
+            <div class="field"><label>이름</label><input id="new-rc-name" type="text" placeholder="이름"></div>
+            <div class="field"><label>지점</label><select id="new-rc-branch"></select></div>
+            <div class="field" style="min-width:auto;"><button class="btn sm" id="add-rc-person">+ 추가</button></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="section-head"><h2>서비스 어드바이저(SA) 명단</h2></div>
+          <div class="settings-block" id="settings-sa" style="margin-top:10px;"></div>
+          <div class="field-row" style="margin-top:12px;">
+            <div class="field"><label>이름</label><input id="new-sa-name" type="text" placeholder="이름"></div>
+            <div class="field"><label>지점</label><select id="new-sa-branch"></select></div>
+            <div class="field" style="min-width:auto;"><button class="btn sm" id="add-sa-person">+ 추가</button></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-head"><h2>데이터 내보내기 (백업)</h2><span class="hint">선택한 월의 SA·리셉션 일마감 원본을 CSV로 저장합니다</span></div>
+        <div class="field-row" style="margin-top:12px;">
+          <div class="field">
+            <label for="export-month">내보낼 월</label>
+            <input type="month" id="export-month">
+          </div>
+          <div class="field" style="min-width:auto;"><button class="btn primary sm" id="export-month-btn">CSV로 내보내기</button></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-head"><h2>이전 데이터 정리</h2><span class="hint">기준 월 이전의 SA·리셉션 일마감 데이터를 영구 삭제해 저장 공간을 확보합니다 (최대 5,000건 제한)</span></div>
+        <div class="field-row" style="margin-top:12px;">
+          <div class="field">
+            <label for="cleanup-cutoff">이 월 이전 데이터 삭제</label>
+            <input type="month" id="cleanup-cutoff">
+          </div>
+          <div class="field" style="min-width:auto;"><button class="btn danger sm" id="cleanup-btn">이전 데이터 삭제</button></div>
+        </div>
+        <p class="muted" style="margin-top:8px;font-size:12px;">삭제 전 반드시 위에서 해당 기간을 먼저 내보내기(백업) 하세요. 삭제는 되돌릴 수 없습니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="note">해피콜/노쇼콜 항목은 더 이상 사용하지 않습니다 · 모든 집계는 입력된 RO·예약 데이터에서 자동 계산됩니다</footer>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="chart-tooltip" id="chart-tooltip"></div>
+<datalist id="cancel-reason-list">
+  <option value="고객사정"></option>
+  <option value="일정변경"></option>
+  <option value="부품대기"></option>
+  <option value="기타"></option>
+</datalist>
+
+<script>
+(function(){
+"use strict";
+
+/* ---------------------------------------------------------------- */
+/* constants                                                          */
+/* ---------------------------------------------------------------- */
+const BRANCH_COLOR = { gunsan:"var(--gunsan)", mokpo:"var(--mokpo)", seosan:"var(--seosan)" };
+const BRANCH_HEX_LIGHT = { gunsan:"#2a78d6", mokpo:"#eb6834", seosan:"#1baf7a" };
+const BRANCH_HEX_DARK  = { gunsan:"#3987e5", mokpo:"#d95926", seosan:"#199e70" };
+
+const DEFAULT_ROSTER = {
+  branches:[{id:"gunsan",name:"군산"},{id:"mokpo",name:"목포"},{id:"seosan",name:"서산"}],
+  reception:[
+    {id:"leesoyeon",name:"이소연",branch:"gunsan"},
+    {id:"kimhyerim",name:"김혜림",branch:"mokpo"},
+    {id:"yuri",name:"유리",branch:"seosan"}
+  ],
+  sa:[
+    {id:"leekyungmin",name:"이경민",branch:"gunsan"},
+    {id:"chajuhyeon",name:"차주현",branch:"gunsan"},
+    {id:"koyoungwook",name:"고영욱",branch:"mokpo"},
+    {id:"ohsinyoung",name:"오신영",branch:"mokpo"},
+    {id:"namjuyoung",name:"남주영",branch:"seosan"},
+    {id:"moonminhak",name:"문민학",branch:"seosan"},
+    {id:"leejinho",name:"이진호",branch:"seosan"}
+  ]
+};
+const DEFAULT_TARGETS = { gunsan:253000000, mokpo:310000000, seosan:300000000 };
+
+const SA_SERVICE_TYPES = ["RETAIL","BSI","W 보증","RECALL","보험","내부처리","SP판매","WP판매"];
+const SA_REVENUE_CATS  = ["RETAIL","BSI","W 보증","RECALL","보험","내부처리"];
+const RC_SERVICE_TYPES = ["Maintenance","Recall/TC","경수리","중수리","진단","소음","사고수리","입고 Proactive-RITA"];
+const RC_STATUS = ["예약접수","차량접수","예약취소","No Show"];
+const RC_PICKDEL = ["","픽딜","고객입고"];
+const STAY_REASONS = ["부품대기","수리 중","진단","수리완료"];
+const CANCEL_REASONS = ["고객사정","일정변경","부품대기","기타"];
+const REOPEN_REASONS = ["부품대기","재 점검","재수리","기타"];
+const LOANER_STATUS = ["대여중","대기중"];
+const LOANER_WARRANTY = [{v:"Y",l:"있음"},{v:"N",l:"없음"}];
+const LOANER_REASONS = ["부품부족","고객불만","자사출고"];
+
+/* ---------------------------------------------------------------- */
+/* state                                                              */
+/* ---------------------------------------------------------------- */
+let db = null;
+let roster = DEFAULT_ROSTER;
+let targets = { ...DEFAULT_TARGETS };
+let receptionDocs = new Map();   // id -> data   (current month)
+let saDocs = new Map();          // id -> data   (current month)
+let loanerDocs = new Map();      // id -> data   (all loaner cars, all branches)
+let unsubs = [];
+let currentView = "dashboard";
+let supabaseClient = null;
+let myProfile = null;     // row from `profiles` table for the signed-in user
+let myIdentity = null;    // { role: 'admin'|'sa'|'reception'|'viewer', personId: string|null }
+
+let saEntries = [];      // rows being edited in SA form
+let rcEntries = [];      // rows being edited in reception form
+let loanerEntries = { gunsan:[], mokpo:[], seosan:[] }; // rows being edited in loaner form, per branch
+
+/* ---------------------------------------------------------------- */
+/* identity — comes from Supabase Auth + the `profiles` table row     */
+/* (role/담당자는 관리자가 설정 화면에서 지정합니다. 로그인 자체가       */
+/*  신원 증명이므로 기기별 PIN/역할 선택 절차는 더 이상 필요 없습니다)   */
+/* ---------------------------------------------------------------- */
+function identityRoleLabel(){
+  if(!myIdentity) return "";
+  if(myIdentity.role === "admin") return " · " + (myProfile?.display_name || "관리자");
+  if(myIdentity.role === "viewer") return " · 뷰어(" + (myProfile?.display_name||"") + ")";
+  if(myIdentity.role === "sa") return " · " + (roster.sa.find(p=>p.id===myIdentity.personId)?.name || myProfile?.display_name || "SA");
+  if(myIdentity.role === "reception") return " · " + (roster.reception.find(p=>p.id===myIdentity.personId)?.name || myProfile?.display_name || "리셉션");
+  return "";
+}
+function applyIdentityRestrictions(){
+  const label = document.getElementById("identity-label");
+  if(label) label.textContent = identityRoleLabel();
+  const isViewer = myIdentity?.role === "viewer";
+  const isSA = myIdentity?.role === "sa";
+  const isReception = myIdentity?.role === "reception";
+  ["nav-sa","nav-reception","nav-loaner"].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.hidden = isViewer;
+  });
+  const saSel = document.getElementById("sa-person");
+  if(saSel){
+    if(isSA && myIdentity.personId){ saSel.value = myIdentity.personId; saSel.disabled = true; }
+    else { saSel.disabled = false; }
+  }
+  const rcSel = document.getElementById("rc-person");
+  if(rcSel){
+    if(isReception && myIdentity.personId){ rcSel.value = myIdentity.personId; rcSel.disabled = true; }
+    else { rcSel.disabled = false; }
+  }
+}
+async function handleLogout(){
+  try{ await supabaseClient.auth.signOut(); }catch(e){}
+  window.location.href = "index.html";
+}
+
+/* ---------------------------------------------------------------- */
+/* small helpers                                                     */
+/* ---------------------------------------------------------------- */
+function esc(s){
+  if(s === null || s === undefined) return "";
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function fmtWon(n){ n = Number(n)||0; return n.toLocaleString("ko-KR") + "원"; }
+function fmtManwon(n){ n = Number(n)||0; return Math.round(n/10000).toLocaleString("ko-KR"); }
+function fmtPct(x){ if(!isFinite(x)) return "0%"; return (x*100).toFixed(1) + "%"; }
+function todayKST(){
+  return new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+}
+function nowKSTLabel(){
+  const d = new Date();
+  const datePart = new Intl.DateTimeFormat("ko-KR",{timeZone:"Asia/Seoul",month:"long",day:"numeric",weekday:"short"}).format(d);
+  return datePart;
+}
+function monthRangeOf(dateStr){
+  const ym = dateStr.slice(0,7);
+  const [y,m] = ym.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return { start: ym+"-01", end: ym+"-"+String(lastDay).padStart(2,"0"), ym };
+}
+function weekRangeOf(dateStr){
+  const d = new Date(dateStr+"T00:00:00Z");
+  const dow = d.getUTCDay(); // 0=Sun..6=Sat
+  const diffToMonday = dow===0 ? 6 : dow-1;
+  const monday = new Date(d); monday.setUTCDate(d.getUTCDate()-diffToMonday);
+  const sunday = new Date(monday); sunday.setUTCDate(monday.getUTCDate()+6);
+  return { start: monday.toISOString().slice(0,10), end: sunday.toISOString().slice(0,10) };
+}
+function isDarkMode(){
+  const root = document.documentElement;
+  if(root.getAttribute("data-theme") === "dark") return true;
+  if(root.getAttribute("data-theme") === "light") return false;
+  return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+}
+function branchHex(branchId){
+  const map = isDarkMode() ? BRANCH_HEX_DARK : BRANCH_HEX_LIGHT;
+  return map[branchId] || "#888888";
+}
+function branchName(id){
+  const b = roster.branches.find(b=>b.id===id);
+  return b ? b.name : id;
+}
+function personName(list, id){
+  const p = list.find(p=>p.id===id);
+  return p ? p.name : id;
+}
+function showToast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(()=>t.classList.remove("show"), 2400);
+}
+function showBanner(html){
+  document.getElementById("banner-slot").innerHTML =
+    '<div class="banner">⚠️ '+html+'</div>';
+}
+function clearBanner(){ document.getElementById("banner-slot").innerHTML = ""; }
+
+/* ---------------------------------------------------------------- */
+/* calculation logic (mirrors the spreadsheet formulas, minus 해피콜) */
+/* ---------------------------------------------------------------- */
+function bucketSA(entries){
+  const b = {RETAIL:0,BSI:0,"W 보증":0,RECALL:0,"보험":0,"내부처리":0};
+  let sp=0, wp=0, roCount=0, checkoutO=0, checkoutX=0, loanerCount=0;
+  for(const e of entries){
+    if(!e.ro_no) continue;
+    roCount++;
+    const amt = Number(e.amount)||0;
+    if(e.svc_type === "SP판매"){ b.RETAIL += amt; sp++; }
+    else if(e.svc_type === "WP판매"){ b.RETAIL += amt; wp++; }
+    else if(e.svc_type in b){ b[e.svc_type] += amt; }
+    else { b.RETAIL += amt; }
+    if(e.checkout_yn === "O") checkoutO++;
+    else if(e.checkout_yn === "X") checkoutX++;
+    if(e.loaner_used === "O") loanerCount++;
+  }
+  const total = Object.values(b).reduce((a,c)=>a+c,0);
+  return { total_sales: total, retail:b.RETAIL, bsi:b.BSI, warranty:b["W 보증"], recall:b.RECALL,
+            insurance:b["보험"], internal:b["내부처리"], sp_count:sp, wp_count:wp,
+            ro_count: roCount, checkout_o:checkoutO, checkout_x:checkoutX, loaner_count:loanerCount };
+}
+function summarizeReception(entries){
+  const valid = entries.filter(e => e.customer || e.car_no || e.resv_no || e.status);
+  const resv = valid.filter(e=>e.status==="예약접수").length;
+  const cancel = valid.filter(e=>e.status==="예약취소").length;
+  const checkin = valid.filter(e=>e.checkin_yn==="O").length;
+  const noshow = valid.filter(e=>e.checkin_yn==="X").length;
+  const pickdel = valid.filter(e=>e.pickdel==="픽딜").length;
+  const customerVisit = valid.filter(e=>e.pickdel==="고객입고").length;
+  const rebookO = valid.filter(e=>e.rebook==="O").length;
+  const rebookX = valid.filter(e=>e.rebook==="X").length;
+  return { resv_count:resv, cancel_count:cancel, checkin_count:checkin, noshow_count:noshow,
+            pickdel_count:pickdel, customer_visit_count:customerVisit, rebook_o:rebookO, rebook_x:rebookX,
+            total_rows: valid.length };
+}
+
+/* ---------------------------------------------------------------- */
+/* init                                                               */
+/* ---------------------------------------------------------------- */
+async function init(){
+  document.getElementById("clock-date").textContent = nowKSTLabel();
+
+  if(!window.supabase || !window.SUPABASE_URL || window.SUPABASE_URL.indexOf("YOUR-PROJECT") !== -1){
+    document.getElementById("app-loading").textContent = "config.js에 Supabase 프로젝트 정보를 먼저 입력해 주세요.";
+    return;
+  }
+  supabaseClient = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+
+  const { data: sessionData } = await supabaseClient.auth.getSession();
+  if(!sessionData.session){
+    window.location.href = "index.html";
+    return;
+  }
+
+  const userId = sessionData.session.user.id;
+  const { data: profile, error: profileErr } = await supabaseClient.from("profiles").select("*").eq("id", userId).maybeSingle();
+  if(profileErr || !profile){
+    document.getElementById("app-loading").textContent = "사용자 정보를 불러오지 못했습니다. 다시 로그인해 주세요.";
+    return;
+  }
+  myProfile = profile;
+
+  document.getElementById("pending-logout-btn").addEventListener("click", handleLogout);
+  if(profile.role === "pending"){
+    document.getElementById("app-loading").hidden = true;
+    document.getElementById("app-pending").hidden = false;
+    return;
+  }
+
+  myIdentity = { role: profile.role, personId: profile.person_id, branchSlug: profile.branch_slug };
+  db = createSupaAdapter(supabaseClient);
+
+  document.getElementById("app-loading").hidden = true;
+  document.getElementById("app-shell").hidden = false;
+  document.getElementById("logout-btn").addEventListener("click", handleLogout);
+  supabaseClient.auth.onAuthStateChange((event)=>{
+    if(event === "SIGNED_OUT") window.location.href = "index.html";
+  });
+
+  bindNav();
+  bindSAForm();
+  bindReceptionForm();
+  bindSettingsForm();
+  setDefaultDates();
+
+  document.getElementById("clock-status").textContent = "실시간 연결됨";
+  clearBanner();
+  subscribeConfig();
+  subscribeMonthData(todayKST());
+  subscribeLoaner();
+  renderAll();
+  applyIdentityRestrictions();
+}
+
+function setDefaultDates(){
+  const t = todayKST();
+  document.getElementById("sa-date").value = t;
+  document.getElementById("rc-date").value = t;
+}
+
+/* ---------------------------------------------------------------- */
+/* db subscriptions                                                   */
+/* ---------------------------------------------------------------- */
+function subscribeConfig(){
+  try{
+    db.doc("config/roster").onSnapshot(snap=>{
+      if(snap.exists && snap.data() && snap.data().branches){
+        roster = snap.data();
+      } else {
+        roster = DEFAULT_ROSTER;
+        db.doc("config/roster").set(DEFAULT_ROSTER).catch(()=>{});
+      }
+      populatePersonSelectors();
+      renderAll();
+    }, err=>console.warn("roster snapshot error", err));
+
+    db.doc("config/targets").onSnapshot(snap=>{
+      if(snap.exists && snap.data()){
+        targets = snap.data();
+      } else {
+        targets = { ...DEFAULT_TARGETS };
+        db.doc("config/targets").set(DEFAULT_TARGETS).catch(()=>{});
+      }
+      renderAll();
+    }, err=>console.warn("targets snapshot error", err));
+
+  }catch(err){ console.warn(err); }
+}
+
+let currentMonthKey = null;
+function subscribeMonthData(dateStr){
+  const {start,end,ym} = monthRangeOf(dateStr);
+  if(currentMonthKey === ym) return;
+  currentMonthKey = ym;
+  unsubs.forEach(u=>{ try{u();}catch(e){} });
+  unsubs = [];
+
+  try{
+    const q1 = db.collection("reception_days").where("date",">=",start).where("date","<=",end);
+    unsubs.push(q1.onSnapshot(snap=>{
+      receptionDocs.clear();
+      snap.docs.forEach(d=>receptionDocs.set(d.id, d.data()));
+      renderDashboard();
+    }, err=>console.warn("reception query error", err)));
+
+    const q2 = db.collection("sa_days").where("date",">=",start).where("date","<=",end);
+    unsubs.push(q2.onSnapshot(snap=>{
+      saDocs.clear();
+      snap.docs.forEach(d=>saDocs.set(d.id, d.data()));
+      renderDashboard();
+    }, err=>console.warn("sa query error", err)));
+  }catch(err){ console.warn(err); }
+}
+
+function subscribeLoaner(){
+  try{
+    db.collection("loaner_cars").onSnapshot(snap=>{
+      loanerDocs.clear();
+      snap.docs.forEach(d=>loanerDocs.set(d.id, d.data()));
+      renderLoanerSummary();
+    }, err=>console.warn("loaner snapshot error", err));
+  }catch(err){ console.warn(err); }
+}
+
+/* ---------------------------------------------------------------- */
+/* nav                                                                */
+/* ---------------------------------------------------------------- */
+function bindNav(){
+  document.getElementById("nav-tabs").addEventListener("click", (e)=>{
+    const btn = e.target.closest("button[data-view]");
+    if(!btn) return;
+    switchView(btn.dataset.view);
+  });
+}
+function switchView(view){
+  currentView = view;
+  ["dashboard","sa","reception","loaner","settings"].forEach(v=>{
+    document.getElementById("view-"+v).hidden = (v!==view);
+    document.getElementById("nav-"+v).classList.toggle("active", v===view);
+  });
+  if(view==="dashboard") renderDashboard();
+  if(view==="loaner") loadLoanerEntries();
+  if(view==="settings") renderSettings();
+}
+function goToInput(kind, personId, date){
+  if(kind==="sa"){
+    switchView("sa");
+    document.getElementById("sa-person").value = personId;
+    document.getElementById("sa-date").value = date;
+    loadSAEntry();
+  } else {
+    switchView("reception");
+    document.getElementById("rc-person").value = personId;
+    document.getElementById("rc-date").value = date;
+    loadRCEntry();
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* selectors                                                          */
+/* ---------------------------------------------------------------- */
+function populatePersonSelectors(){
+  const saSel = document.getElementById("sa-person");
+  const rcSel = document.getElementById("rc-person");
+  const prevSA = saSel.value, prevRC = rcSel.value;
+  saSel.innerHTML = roster.sa.map(p=>`<option value="${esc(p.id)}">${esc(p.name)} · ${esc(branchName(p.branch))}</option>`).join("");
+  rcSel.innerHTML = roster.reception.map(p=>`<option value="${esc(p.id)}">${esc(p.name)} · ${esc(branchName(p.branch))}</option>`).join("");
+  if(roster.sa.some(p=>p.id===prevSA)) saSel.value = prevSA;
+  if(roster.reception.some(p=>p.id===prevRC)) rcSel.value = prevRC;
+
+  const branchSelects = [document.getElementById("new-rc-branch"), document.getElementById("new-sa-branch")];
+  branchSelects.forEach(sel=>{
+    if(!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = roster.branches.map(b=>`<option value="${esc(b.id)}">${esc(b.name)}</option>`).join("");
+    if(roster.branches.some(b=>b.id===prev)) sel.value = prev;
+  });
+  applyIdentityRestrictions();
+}
+
+/* ---------------------------------------------------------------- */
+/* render: everything                                                  */
+/* ---------------------------------------------------------------- */
+function renderAll(){
+  populatePersonSelectors();
+  renderDashboard();
+  if(currentView==="settings") renderSettings();
+}
+
+/* ================================================================ */
+/* DASHBOARD                                                          */
+/* ================================================================ */
+function aggregateSA(branchId, saId, filterFn){
+  let out = { total_sales:0, retail:0, bsi:0, warranty:0, recall:0, insurance:0, internal:0,
+              sp_count:0, wp_count:0, ro_count:0, checkout_o:0, checkout_x:0, loaner_count:0 };
+  for(const doc of saDocs.values()){
+    if(branchId && doc.branch_slug !== branchId) continue;
+    if(saId && doc.sa_id !== saId) continue;
+    if(filterFn && !filterFn(doc.date)) continue;
+    const s = doc.summary || {};
+    for(const k in out) out[k] += (s[k]||0);
+  }
+  return out;
+}
+function aggregateReception(branchId, filterFn){
+  let out = { resv_count:0, cancel_count:0, checkin_count:0, noshow_count:0,
+              pickdel_count:0, customer_visit_count:0, rebook_o:0, rebook_x:0, total_rows:0 };
+  for(const doc of receptionDocs.values()){
+    if(branchId && doc.branch_slug !== branchId) continue;
+    if(filterFn && !filterFn(doc.date)) continue;
+    const s = doc.summary || {};
+    for(const k in out) out[k] += (s[k]||0);
+  }
+  return out;
+}
+function countUnshippedSA(branchId, filterFn){
+  // "미출고" = RO가 접수되었지만 출고(O) 처리되지 않은 차량 (숙박(X) 포함, 미기재 포함)
+  let count = 0;
+  for(const doc of saDocs.values()){
+    if(branchId && doc.branch_slug !== branchId) continue;
+    if(filterFn && !filterFn(doc.date)) continue;
+    for(const e of (doc.entries||[])){
+      if(!e.ro_no) continue;
+      if(e.checkout_yn !== "O") count++;
+    }
+  }
+  return count;
+}
+
+function renderDashboard(){
+  const today = todayKST();
+  renderBranchCards(today);
+  renderTracker(today);
+  renderReturnTable(today);
+  renderLoanerSummary();
+  renderLineChart(today);
+  renderServiceBarChart(today);
+  renderSATable(today);
+  renderReceptionTable(today);
+}
+
+function collectReturnVehicles(){
+  const rows = [];
+  for(const doc of saDocs.values()){
+    for(const e of (doc.entries||[])){
+      if(e.return_date){
+        rows.push({ ro_no:e.ro_no, return_date:e.return_date, return_reason:e.return_reason||"",
+                    branch:doc.branch_slug, sa_name:doc.sa_name });
+      }
+    }
+  }
+  rows.sort((a,b)=> a.return_date.localeCompare(b.return_date));
+  return rows;
+}
+
+function renderReturnTable(today){
+  const rows = collectReturnVehicles();
+  const html = `
+    <thead><tr><th>RO 번호</th><th>지점</th><th>담당 SA</th><th>재입고 예정일</th><th>사유</th><th>상태</th></tr></thead>
+    <tbody>
+      ${rows.map(r=>{
+        let statusLabel, statusStyle;
+        if(r.return_date === today){ statusLabel="오늘"; statusStyle="color:var(--warning);font-weight:900;"; }
+        else if(r.return_date < today){ statusLabel="지남"; statusStyle="color:var(--critical);font-weight:900;"; }
+        else { statusLabel="예정"; statusStyle="color:var(--text-muted);"; }
+        return `<tr>
+          <td>${esc(r.ro_no)}</td>
+          <td><span class="pill ${r.branch}">${esc(branchName(r.branch))}</span></td>
+          <td>${esc(r.sa_name)}</td>
+          <td class="num">${esc(r.return_date)}</td>
+          <td>${esc(r.return_reason)}</td>
+          <td style="${statusStyle}">${statusLabel}</td>
+        </tr>`;
+      }).join("") || '<tr class="empty-row"><td colspan="6">재입고 예정 차량이 없습니다</td></tr>'}
+    </tbody>`;
+  document.getElementById("table-return").innerHTML = html;
+}
+
+function renderLoanerSummary(){
+  const wrap = document.getElementById("table-loaner");
+  if(!wrap) return;
+  const rows = [...loanerDocs.values()];
+  rows.sort((a,b)=>{
+    if(a.status !== b.status) return a.status==="대여중" ? -1 : 1;
+    return (a.branch_slug||"").localeCompare(b.branch_slug||"");
+  });
+  const counts = {};
+  roster.branches.forEach(b=> counts[b.id] = {inuse:0, waiting:0});
+  rows.forEach(r=>{
+    if(!counts[r.branch_slug]) counts[r.branch_slug] = {inuse:0, waiting:0};
+    if(r.status==="대여중") counts[r.branch_slug].inuse++; else counts[r.branch_slug].waiting++;
+  });
+  const hint = document.getElementById("loaner-summary-hint");
+  if(hint){
+    hint.textContent = roster.branches.map(b=>`${b.name} 대여중 ${counts[b.id]?.inuse||0}·대기 ${counts[b.id]?.waiting||0}`).join("   ·   ");
+  }
+  const html = `
+    <thead><tr><th>지점</th><th>차량번호</th><th>상태</th><th>대여 RO번호</th><th>출고일자</th><th>입고 예정일자</th><th>보증여부</th><th>대여 사유</th></tr></thead>
+    <tbody>
+      ${rows.map(r=>`
+        <tr>
+          <td><span class="pill ${r.branch_slug}">${esc(branchName(r.branch_slug))}</span></td>
+          <td>${esc(r.car_no)}</td>
+          <td style="${r.status==='대여중'?'color:var(--warning);font-weight:900;':'color:var(--text-muted);'}">${esc(r.status)}</td>
+          <td class="num">${esc(r.loan_ro_no)}</td>
+          <td class="num">${esc(r.checkout_date)}</td>
+          <td class="num">${esc(r.expected_return_date)}</td>
+          <td>${r.warranty==='Y'?'있음':'없음'}</td>
+          <td>${esc(r.reason)}</td>
+        </tr>`).join("") || '<tr class="empty-row"><td colspan="8">등록된 로너카가 없습니다</td></tr>'}
+    </tbody>`;
+  wrap.innerHTML = html;
+}
+
+function renderBranchCards(today){
+  const wrap = document.getElementById("branch-cards");
+  wrap.innerHTML = roster.branches.map(b=>{
+    const todaySA = aggregateSA(b.id, null, d => d===today);
+    const mtdSA = aggregateSA(b.id, null, () => true);
+    const todayRC = aggregateReception(b.id, d => d===today);
+    const mtdRC = aggregateReception(b.id, () => true);
+    const target = targets[b.id] || 0;
+    const pct = target ? Math.min(1, mtdSA.total_sales/target) : 0;
+    const hex = branchHex(b.id);
+    const week = weekRangeOf(today);
+    const todayUnshipped = countUnshippedSA(b.id, d => d===today);
+    const weekUnshipped = countUnshippedSA(b.id, d => d>=week.start && d<=week.end);
+    return `
+      <div class="card branch-card" style="--branch-color:${hex};">
+        <div class="b-name"><span class="dot"></span>${esc(b.name)} 지점</div>
+        <div class="target-block">
+          <div class="target-row"><span>이달 목표 대비</span><span class="num">${fmtPct(pct)}</span></div>
+          <div class="progress-track"><div class="progress-fill" style="width:${(pct*100).toFixed(1)}%"></div></div>
+          <div class="target-row"><span class="num">${fmtManwon(mtdSA.total_sales)}만원</span><span class="num muted">/ ${fmtManwon(target)}만원</span></div>
+        </div>
+        <div class="b-figures">
+          <div class="fig"><span class="label">오늘 매출</span><span class="value today num">${fmtManwon(todaySA.total_sales)}만</span></div>
+          <div class="fig"><span class="label">이달 누계</span><span class="value num">${fmtManwon(mtdSA.total_sales)}만</span></div>
+          <div class="fig"><span class="label">오늘 RO</span><span class="value num">${todaySA.ro_count}건</span></div>
+        </div>
+        <div class="mini-stats">
+          <span>예약 <b class="num">${mtdRC.resv_count}</b></span>
+          <span>입고 <b class="num">${mtdRC.checkin_count}</b></span>
+          <span>노쇼 <b class="num">${mtdRC.noshow_count}</b></span>
+          <span>픽딜 <b class="num">${mtdRC.pickdel_count}</b></span>
+        </div>
+        <div class="mini-stats">
+          <span>당일 미출고 <b class="num" style="${todayUnshipped>0?'color:var(--critical);':''}">${todayUnshipped}</b></span>
+          <span>주간누적 미출고 <b class="num" style="${weekUnshipped>0?'color:var(--warning);':''}">${weekUnshipped}</b></span>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+function renderTracker(today){
+  document.getElementById("tracker-date-hint").textContent = nowKSTLabel() + " 기준";
+  const people = [
+    ...roster.reception.map(p=>({...p, kind:"reception"})),
+    ...roster.sa.map(p=>({...p, kind:"sa"})),
+  ];
+  const grid = document.getElementById("tracker-grid");
+  grid.innerHTML = people.map(p=>{
+    let done, docKey;
+    if(p.kind==="reception"){
+      docKey = `${p.branch}_${today}`;
+      done = receptionDocs.has(docKey);
+    } else {
+      docKey = `${p.branch}_${p.id}_${today}`;
+      done = saDocs.has(docKey);
+    }
+    return `
+      <div class="tracker-item" data-kind="${p.kind}" data-id="${esc(p.id)}" data-date="${today}" title="클릭해서 입력 화면으로 이동">
+        <span class="badge ${done?'done':'pending'}"></span>
+        <div class="who">
+          <span class="n">${esc(p.name)}</span>
+          <span class="b">${esc(branchName(p.branch))} · ${p.kind==='reception'?'리셉션':'SA'} · ${done?'제출완료':'미제출'}</span>
+        </div>
+      </div>`;
+  }).join("");
+  grid.querySelectorAll(".tracker-item").forEach(el=>{
+    el.addEventListener("click", ()=> goToInput(el.dataset.kind, el.dataset.id, el.dataset.date));
+  });
+}
+
+function renderSATable(today){
+  const rows = roster.sa.map(p=>{
+    const mtd = aggregateSA(p.branch, p.id, () => true);
+    const t = aggregateSA(p.branch, p.id, d => d===today);
+    return { p, mtd, t };
+  }).sort((a,b)=> b.mtd.total_sales - a.mtd.total_sales);
+  document.getElementById("sa-table-hint").textContent = monthRangeOf(today).ym + " 누계 기준 정렬, 단위 만원";
+  const html = `
+    <thead><tr><th>SA</th><th>지점</th><th class="right">RETAIL</th><th class="right">BSI</th><th class="right">W 보증</th><th class="right">이달 합계</th><th class="right">오늘</th></tr></thead>
+    <tbody>
+      ${rows.map(r=>`
+        <tr>
+          <td>${esc(r.p.name)}</td>
+          <td><span class="pill ${r.p.branch}">${esc(branchName(r.p.branch))}</span></td>
+          <td class="right num">${fmtManwon(r.mtd.retail)}만</td>
+          <td class="right num">${fmtManwon(r.mtd.bsi)}만</td>
+          <td class="right num">${fmtManwon(r.mtd.warranty)}만</td>
+          <td class="right num" style="font-weight:900;">${fmtManwon(r.mtd.total_sales)}만</td>
+          <td class="right num">${fmtManwon(r.t.total_sales)}만</td>
+        </tr>`).join("") || '<tr class="empty-row"><td colspan="7">등록된 SA가 없습니다</td></tr>'}
+    </tbody>`;
+  document.getElementById("table-sa").innerHTML = html;
+}
+
+function renderReceptionTable(today){
+  const rows = roster.reception.map(p=>{
+    const mtd = aggregateReception(p.branch, () => true);
+    const t = aggregateReception(p.branch, d => d===today);
+    return { p, mtd, t };
+  });
+  document.getElementById("reception-table-hint").textContent = monthRangeOf(today).ym + " 누계";
+  const html = `
+    <thead><tr><th>매니저</th><th>지점</th><th class="right">오늘 입고</th><th class="right">이달 예약</th><th class="right">이달 노쇼</th><th class="right">이달 픽딜</th></tr></thead>
+    <tbody>
+      ${rows.map(r=>`
+        <tr>
+          <td>${esc(r.p.name)}</td>
+          <td><span class="pill ${r.p.branch}">${esc(branchName(r.p.branch))}</span></td>
+          <td class="right num">${r.t.checkin_count}</td>
+          <td class="right num">${r.mtd.resv_count}</td>
+          <td class="right num">${r.mtd.noshow_count}</td>
+          <td class="right num">${r.mtd.pickdel_count}</td>
+        </tr>`).join("") || '<tr class="empty-row"><td colspan="6">등록된 리셉션 매니저가 없습니다</td></tr>'}
+    </tbody>`;
+  document.getElementById("table-reception").innerHTML = html;
+}
+
+/* ---------------------------------------------------------------- */
+/* charts (hand-rolled inline SVG, hover tooltip via shared div)       */
+/* ---------------------------------------------------------------- */
+const TT = () => document.getElementById("chart-tooltip");
+function hideTooltip(){ TT().classList.remove("show"); }
+function showTooltipAt(x, y, html){
+  const el = TT();
+  el.innerHTML = html;
+  el.classList.add("show");
+  const rect = el.getBoundingClientRect();
+  let left = x + 14, top = y - rect.height - 10;
+  if(top < 8) top = y + 16;
+  if(left + rect.width > window.innerWidth - 8) left = x - rect.width - 14;
+  el.style.left = left + "px";
+  el.style.top = top + "px";
+}
+
+function niceCeil(v){
+  if(v <= 0) return 10;
+  const exp = Math.pow(10, Math.floor(Math.log10(v)));
+  const frac = v/exp;
+  let niceFrac;
+  if(frac <= 1) niceFrac = 1;
+  else if(frac <= 2) niceFrac = 2;
+  else if(frac <= 5) niceFrac = 5;
+  else niceFrac = 10;
+  return niceFrac * exp;
+}
+
+function renderLineChart(today){
+  const legend = document.getElementById("legend-line");
+  legend.innerHTML = roster.branches.map(b=>
+    `<span class="item"><span class="sw" style="background:${branchHex(b.id)}"></span>${esc(b.name)}</span>`).join("");
+
+  const {start} = monthRangeOf(today);
+  const dates = [];
+  { let d = new Date(start+"T00:00:00Z"); const end = new Date(today+"T00:00:00Z");
+    while(d <= end){ dates.push(d.toISOString().slice(0,10)); d.setUTCDate(d.getUTCDate()+1); } }
+
+  const series = roster.branches.map(b=>{
+    const values = dates.map(dt=>{
+      let sum = 0;
+      for(const doc of saDocs.values()){ if(doc.branch_slug===b.id && doc.date===dt) sum += (doc.summary?.total_sales||0); }
+      return sum/10000;
+    });
+    return { id:b.id, label:b.name, color: branchHex(b.id), values };
+  });
+
+  const box = document.getElementById("chart-line-box");
+  if(dates.length === 0 || series.every(s=>s.values.every(v=>v===0))){
+    box.innerHTML = '<div class="banner" style="background:transparent;border:1px dashed var(--border);">아직 표시할 매출 데이터가 없습니다.</div>';
+    return;
+  }
+
+  const W=640,H=260,padL=52,padR=14,padT=14,padB=28;
+  const plotW=W-padL-padR, plotH=H-padT-padB;
+  const maxV = niceCeil(Math.max(1, ...series.flatMap(s=>s.values)));
+  const n = dates.length;
+  const xStep = n>1 ? plotW/(n-1) : 0;
+  const xAt = i => padL + i*xStep;
+  const yAt = v => padT + plotH - (v/maxV)*plotH;
+
+  const gridLines = [0,0.25,0.5,0.75,1].map(f=>{
+    const y = padT + plotH*(1-f);
+    const val = Math.round(maxV*f);
+    return `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" style="stroke:var(--grid)" stroke-width="1"/>
+            <text x="${padL-8}" y="${y+4}" text-anchor="end" font-size="10" style="fill:var(--text-muted)">${val.toLocaleString()}</text>`;
+  }).join("");
+
+  const step = Math.max(1, Math.ceil(n/7));
+  const xLabels = dates.map((dt,i)=>{
+    if(i % step !== 0 && i !== n-1) return "";
+    const day = Number(dt.slice(8,10));
+    return `<text x="${xAt(i)}" y="${H-8}" text-anchor="middle" font-size="10" style="fill:var(--text-muted)">${day}일</text>`;
+  }).join("");
+
+  const paths = series.map(s=>{
+    const d = s.values.map((v,i)=> (i===0?"M":"L") + xAt(i).toFixed(1) + "," + yAt(v).toFixed(1)).join(" ");
+    return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;
+  }).join("");
+
+  const dots = series.map(s=> s.values.map((v,i)=>
+    `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(v).toFixed(1)}" r="3.5" fill="${s.color}" style="stroke:var(--surface)" stroke-width="1.5"/>`
+  ).join("")).join("");
+
+  const hoverCols = dates.map((dt,i)=>{
+    const x0 = i===0 ? padL : (xAt(i-1)+xAt(i))/2;
+    const x1 = i===n-1 ? W-padR : (xAt(i)+xAt(i+1))/2;
+    return `<rect data-idx="${i}" x="${x0.toFixed(1)}" y="${padT}" width="${(x1-x0).toFixed(1)}" height="${plotH}" fill="transparent" class="hover-col"/>`;
+  }).join("");
+
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="지점별 일별 매출 추이">
+      ${gridLines}
+      <line x1="${padL}" y1="${padT+plotH}" x2="${W-padR}" y2="${padT+plotH}" style="stroke:var(--baseline)" stroke-width="1"/>
+      ${paths}${dots}${xLabels}
+      <g id="crosshair" style="display:none;"><line x1="0" y1="${padT}" x2="0" y2="${padT+plotH}" style="stroke:var(--text-muted)" stroke-width="1" stroke-dasharray="3,3"/></g>
+      ${hoverCols}
+    </svg>`;
+
+  const svg = box.querySelector("svg");
+  const crosshair = svg.querySelector("#crosshair");
+  svg.querySelectorAll(".hover-col").forEach(rect=>{
+    rect.addEventListener("mousemove", (ev)=>{
+      const i = Number(rect.dataset.idx);
+      crosshair.style.display = "block";
+      crosshair.querySelector("line").setAttribute("x1", xAt(i)); crosshair.querySelector("line").setAttribute("x2", xAt(i));
+      const dt = dates[i];
+      const rows = series.map(s=>`<div class="t-row"><span class="k"><span class="sw" style="background:${s.color}"></span>${esc(s.label)}</span><span class="num">${s.values[i].toLocaleString()}만원</span></div>`).join("");
+      showTooltipAt(ev.clientX, ev.clientY, `<div class="t-date">${dt}</div>${rows}`);
+    });
+    rect.addEventListener("mouseleave", ()=>{ crosshair.style.display="none"; hideTooltip(); });
+  });
+}
+
+function renderServiceBarChart(today){
+  const legend = document.getElementById("legend-bar");
+  legend.innerHTML = roster.branches.map(b=>
+    `<span class="item"><span class="sw" style="background:${branchHex(b.id)}"></span>${esc(b.name)}</span>`).join("");
+
+  const perBranch = {};
+  roster.branches.forEach(b=>{ perBranch[b.id] = aggregateSA(b.id, null, () => true); });
+
+  const box = document.getElementById("chart-bar-box");
+  const totalAll = Object.values(perBranch).reduce((a,x)=>a+x.total_sales,0);
+  if(totalAll === 0){
+    box.innerHTML = '<div class="banner" style="background:transparent;border:1px dashed var(--border);">아직 표시할 매출 데이터가 없습니다.</div>';
+    return;
+  }
+
+  const keyMap = { "RETAIL":"retail", "BSI":"bsi", "W 보증":"warranty", "RECALL":"recall", "보험":"insurance", "내부처리":"internal" };
+  const cats = SA_REVENUE_CATS;
+  const maxV = niceCeil(Math.max(1, ...cats.map(c => Math.max(...roster.branches.map(b => perBranch[b.id][keyMap[c]]/10000)))));
+
+  const W=640,H=260,padL=52,padR=14,padT=14,padB=40;
+  const plotW=W-padL-padR, plotH=H-padT-padB;
+  const groupW = plotW/cats.length;
+  const barGap = 3, groupPad = 14;
+  const barW = (groupW - groupPad*2 - barGap*(roster.branches.length-1)) / roster.branches.length;
+
+  const yAt = v => padT + plotH - (v/maxV)*plotH;
+  const gridLines = [0,0.25,0.5,0.75,1].map(f=>{
+    const y = padT + plotH*(1-f);
+    const val = Math.round(maxV*f);
+    return `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" style="stroke:var(--grid)" stroke-width="1"/>
+            <text x="${padL-8}" y="${y+4}" text-anchor="end" font-size="10" style="fill:var(--text-muted)">${val.toLocaleString()}</text>`;
+  }).join("");
+
+  let bars = "", labels = "";
+  cats.forEach((cat,ci)=>{
+    const gx = padL + ci*groupW;
+    labels += `<text x="${gx+groupW/2}" y="${H-24}" text-anchor="middle" font-size="10.5" style="fill:var(--text-secondary)">${esc(cat)}</text>`;
+    roster.branches.forEach((b,bi)=>{
+      const v = perBranch[b.id][keyMap[cat]]/10000;
+      const x = gx + groupPad + bi*(barW+barGap);
+      const y = yAt(v);
+      const h = padT+plotH - y;
+      bars += `<rect data-cat="${esc(cat)}" data-branch="${b.id}" data-val="${v.toFixed(0)}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(0,h).toFixed(1)}" rx="3" fill="${branchHex(b.id)}" class="bar-rect"/>`;
+    });
+  });
+
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="서비스 유형별 매출">
+      ${gridLines}
+      <line x1="${padL}" y1="${padT+plotH}" x2="${W-padR}" y2="${padT+plotH}" style="stroke:var(--baseline)" stroke-width="1"/>
+      ${bars}${labels}
+    </svg>`;
+
+  box.querySelectorAll(".bar-rect").forEach(rect=>{
+    rect.addEventListener("mousemove", (ev)=>{
+      const branch = rect.dataset.branch, cat = rect.dataset.cat, val = Number(rect.dataset.val);
+      showTooltipAt(ev.clientX, ev.clientY,
+        `<div class="t-date">${esc(cat)} · ${esc(branchName(branch))}</div><div class="t-row"><span class="k"><span class="sw" style="background:${branchHex(branch)}"></span>매출</span><span class="num">${val.toLocaleString()}만원</span></div>`);
+    });
+    rect.addEventListener("mouseleave", hideTooltip);
+  });
+}
+
+/* ================================================================ */
+/* SA INPUT FORM                                                       */
+/* ================================================================ */
+function bindSAForm(){
+  document.getElementById("sa-load-btn").addEventListener("click", loadSAEntry);
+  document.getElementById("sa-person").addEventListener("change", loadSAEntry);
+  document.getElementById("sa-date").addEventListener("change", loadSAEntry);
+  document.getElementById("sa-add-row").addEventListener("click", ()=>{
+    saEntries.push({ ro_no:"", checkin_time:"", checkout_yn:"", stay_reason:"", svc_type:"RETAIL", amount:"",
+                      return_date:"", return_reason:"", loaner_used:"" });
+    renderSAEntryTable();
+  });
+  document.getElementById("sa-save-btn").addEventListener("click", saveSAEntry);
+}
+function saDocId(personId, date){
+  const p = roster.sa.find(p=>p.id===personId);
+  if(!p) return null;
+  return `${p.branch}_${personId}_${date}`;
+}
+async function loadSAEntry(){
+  const personId = document.getElementById("sa-person").value;
+  const date = document.getElementById("sa-date").value;
+  if(!personId || !date) return;
+  saEntries = [];
+  if(db){
+    const id = saDocId(personId, date);
+    try{
+      const snap = await db.doc("sa_days/"+id).get();
+      if(snap.exists) saEntries = (snap.data().entries || []).map(e=>({...e}));
+    }catch(err){ console.warn(err); }
+  }
+  renderSAEntryTable();
+}
+function readSAEntriesFromDOM(){
+  // values are kept live in saEntries via input handlers; this is just a safety no-op
+  return saEntries;
+}
+function renderSAEntryTable(){
+  const body = document.getElementById("sa-entry-body");
+  if(saEntries.length===0){
+    body.innerHTML = '<tr class="empty-row"><td colspan="11">RO 추가 버튼으로 오늘 입고된 차량을 입력하세요</td></tr>';
+    updateSASummary();
+    return;
+  }
+  body.innerHTML = saEntries.map((e,i)=>`
+    <tr data-idx="${i}">
+      <td class="center muted">${i+1}</td>
+      <td><input type="text" data-f="ro_no" value="${esc(e.ro_no)}" placeholder="RO2609000000"></td>
+      <td><input type="time" data-f="checkin_time" value="${esc(e.checkin_time)}"></td>
+      <td><select data-f="svc_type">${SA_SERVICE_TYPES.map(t=>`<option value="${t}" ${e.svc_type===t?"selected":""}>${t}</option>`).join("")}</select></td>
+      <td><input type="number" data-f="amount" value="${e.amount===""||e.amount===undefined?"":e.amount}" placeholder="0" min="0" step="1000"></td>
+      <td>
+        <div class="toggle-oxo toggle-checkout">
+          <button type="button" class="on-o ${e.checkout_yn==='O'?'active':''}" data-set="O">O</button>
+          <button type="button" class="on-x ${e.checkout_yn==='X'?'active':''}" data-set="X">X</button>
+        </div>
+      </td>
+      <td>
+        <select data-f="stay_reason" ${e.checkout_yn!=='X'?'disabled':''}>
+          <option value="">-</option>
+          ${STAY_REASONS.map(r=>`<option value="${r}" ${e.stay_reason===r?"selected":""}>${r}</option>`).join("")}
+        </select>
+      </td>
+      <td><input type="date" data-f="return_date" value="${esc(e.return_date||"")}"></td>
+      <td>
+        <select data-f="return_reason" ${!e.return_date?'disabled':''}>
+          <option value="">-</option>
+          ${REOPEN_REASONS.map(r=>`<option value="${r}" ${e.return_reason===r?"selected":""}>${r}</option>`).join("")}
+        </select>
+      </td>
+      <td>
+        <div class="toggle-oxo toggle-loaner">
+          <button type="button" class="on-o ${e.loaner_used==='O'?'active':''}" data-loaner-set="O">O</button>
+          <button type="button" class="on-x ${e.loaner_used==='X'?'active':''}" data-loaner-set="X">X</button>
+        </div>
+      </td>
+      <td><button class="btn icon danger sm" data-del="${i}" title="삭제">✕</button></td>
+    </tr>`).join("");
+
+  body.querySelectorAll("input,select").forEach(el=>{
+    el.addEventListener("input", onSAFieldChange);
+    el.addEventListener("change", onSAFieldChange);
+  });
+  body.querySelectorAll("[data-del]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      saEntries.splice(Number(btn.dataset.del),1);
+      renderSAEntryTable();
+    });
+  });
+  body.querySelectorAll(".toggle-checkout button").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const idx = Number(btn.closest("tr").dataset.idx);
+      saEntries[idx].checkout_yn = (saEntries[idx].checkout_yn === btn.dataset.set) ? "" : btn.dataset.set;
+      if(saEntries[idx].checkout_yn !== "X") saEntries[idx].stay_reason = "";
+      renderSAEntryTable();
+    });
+  });
+  body.querySelectorAll(".toggle-loaner button").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const idx = Number(btn.closest("tr").dataset.idx);
+      saEntries[idx].loaner_used = (saEntries[idx].loaner_used === btn.dataset.loanerSet) ? "" : btn.dataset.loanerSet;
+      renderSAEntryTable();
+    });
+  });
+  updateSASummary();
+}
+function onSAFieldChange(ev){
+  const tr = ev.target.closest("tr");
+  const idx = Number(tr.dataset.idx);
+  const field = ev.target.dataset.f;
+  saEntries[idx][field] = ev.target.value;
+  if(field === "return_date"){
+    if(!ev.target.value) saEntries[idx].return_reason = "";
+    renderSAEntryTable();
+    return;
+  }
+  updateSASummary();
+}
+function updateSASummary(){
+  const s = bucketSA(saEntries);
+  document.getElementById("sa-summary").innerHTML = `
+    <div class="item"><span class="k">일 매출 합계</span><span class="v total num">${fmtWon(s.total_sales)}</span></div>
+    <div class="item"><span class="k">RETAIL</span><span class="v num">${fmtWon(s.retail)}</span></div>
+    <div class="item"><span class="k">BSI</span><span class="v num">${fmtWon(s.bsi)}</span></div>
+    <div class="item"><span class="k">W 보증</span><span class="v num">${fmtWon(s.warranty)}</span></div>
+    <div class="item"><span class="k">RECALL</span><span class="v num">${fmtWon(s.recall)}</span></div>
+    <div class="item"><span class="k">보험</span><span class="v num">${fmtWon(s.insurance)}</span></div>
+    <div class="item"><span class="k">내부처리</span><span class="v num">${fmtWon(s.internal)}</span></div>
+    <div class="item"><span class="k">RO 발행 수</span><span class="v num">${s.ro_count}건</span></div>
+    <div class="item"><span class="k">SP+ / WP 판매</span><span class="v num">${s.sp_count} / ${s.wp_count}</span></div>
+    <div class="item"><span class="k">출고완료 / 숙박</span><span class="v num">${s.checkout_o} / ${s.checkout_x}</span></div>
+    <div class="item"><span class="k">로너카 사용</span><span class="v num">${s.loaner_count}건</span></div>
+  `;
+}
+async function saveSAEntry(){
+  const personId = document.getElementById("sa-person").value;
+  const date = document.getElementById("sa-date").value;
+  if(!personId || !date){ showToast("SA와 일자를 선택해 주세요"); return; }
+  if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
+  const cleaned = saEntries.filter(e=>e.ro_no && e.ro_no.trim());
+  if(cleaned.length !== saEntries.length){ saEntries = cleaned; renderSAEntryTable(); }
+  const p = roster.sa.find(p=>p.id===personId);
+  const id = saDocId(personId, date);
+  const summary = bucketSA(cleaned);
+  const payload = {
+    date, branch: branchName(p.branch), branch_slug: p.branch,
+    sa_name: p.name, sa_id: p.id,
+    entries: cleaned, summary,
+    submitted_at: new Date().toISOString(),
+  };
+  const btn = document.getElementById("sa-save-btn");
+  btn.disabled = true; btn.textContent = "저장 중…";
+  try{
+    await db.doc("sa_days/"+id).set(payload);
+    if(date.slice(0,7) === currentMonthKey || monthRangeOf(date).ym === currentMonthKey){
+      saDocs.set(id, payload);
+    }
+    showToast("저장되었습니다 · " + p.name + " · " + date);
+    renderDashboard();
+  }catch(err){
+    console.error(err);
+    showToast("저장에 실패했습니다. 다시 시도해 주세요.");
+  }finally{
+    btn.disabled = false; btn.textContent = "일마감 저장";
+  }
+}
+
+/* ================================================================ */
+/* RECEPTION INPUT FORM                                                */
+/* ================================================================ */
+function bindReceptionForm(){
+  document.getElementById("rc-load-btn").addEventListener("click", loadRCEntry);
+  document.getElementById("rc-person").addEventListener("change", loadRCEntry);
+  document.getElementById("rc-date").addEventListener("change", loadRCEntry);
+  document.getElementById("rc-add-row").addEventListener("click", ()=>{
+    rcEntries.push({ resv_dt:"", checkin_dt:"", resv_no:"", customer:"", car_no:"", vin:"", model:"",
+                      svc_type:"Maintenance", status:"예약접수", pickdel:"", checkin_yn:"", cancel_reason:"",
+                      rebook:"", rebook_dt:"", receiver:"" });
+    renderRCEntryTable();
+  });
+  document.getElementById("rc-save-btn").addEventListener("click", saveRCEntry);
+}
+function rcDocId(personId, date){
+  const p = roster.reception.find(p=>p.id===personId);
+  if(!p) return null;
+  return `${p.branch}_${date}`;
+}
+async function loadRCEntry(){
+  const personId = document.getElementById("rc-person").value;
+  const date = document.getElementById("rc-date").value;
+  if(!personId || !date) return;
+  rcEntries = [];
+  if(db){
+    const id = rcDocId(personId, date);
+    try{
+      const snap = await db.doc("reception_days/"+id).get();
+      if(snap.exists) rcEntries = (snap.data().entries || []).map(e=>({...e}));
+    }catch(err){ console.warn(err); }
+  }
+  renderRCEntryTable();
+}
+function timeOnly(v){
+  if(!v) return "";
+  if(v.includes("T")) return v.split("T")[1]?.slice(0,5) || "";
+  if(v.includes(" ")) return v.split(" ")[1]?.slice(0,5) || "";
+  return v.length===5 ? v : "";
+}
+function renderRCEntryTable(){
+  const body = document.getElementById("rc-entry-body");
+  if(rcEntries.length===0){
+    body.innerHTML = '<tr class="empty-row"><td colspan="13">예약 추가 버튼으로 오늘 접수된 예약을 입력하세요</td></tr>';
+    updateRCSummary();
+    return;
+  }
+  body.innerHTML = rcEntries.map((e,i)=>`
+    <tr data-idx="${i}">
+      <td class="center muted">${i+1}</td>
+      <td><input type="time" data-f="resv_dt" value="${esc(timeOnly(e.resv_dt))}"></td>
+      <td><input type="text" data-f="resv_no" value="${esc(e.resv_no)}" placeholder="SB..."></td>
+      <td><input type="text" data-f="customer" value="${esc(e.customer)}" placeholder="고객명"></td>
+      <td><input type="text" data-f="car_no" value="${esc(e.car_no)}" placeholder="12가3456"></td>
+      <td><input type="text" data-f="model" value="${esc(e.model)}" placeholder="모델"></td>
+      <td><select data-f="svc_type">${RC_SERVICE_TYPES.map(t=>`<option value="${t}" ${e.svc_type===t?"selected":""}>${t}</option>`).join("")}</select></td>
+      <td><select data-f="status">${RC_STATUS.map(t=>`<option value="${t}" ${e.status===t?"selected":""}>${t}</option>`).join("")}</select></td>
+      <td><select data-f="pickdel">${RC_PICKDEL.map(t=>`<option value="${t}" ${e.pickdel===t?"selected":""}>${t||"-"}</option>`).join("")}</select></td>
+      <td>
+        <div class="toggle-oxo">
+          <button type="button" class="on-o ${e.checkin_yn==='O'?'active':''}" data-set="O">O</button>
+          <button type="button" class="on-x ${e.checkin_yn==='X'?'active':''}" data-set="X">X</button>
+        </div>
+      </td>
+      <td><input type="text" list="cancel-reason-list" data-f="cancel_reason" value="${esc(e.cancel_reason)}" placeholder="-" ${e.checkin_yn!=='X'?'disabled':''}></td>
+      <td><select data-f="rebook"><option value="">-</option><option value="O" ${e.rebook==='O'?'selected':''}>O</option><option value="X" ${e.rebook==='X'?'selected':''}>X</option></select></td>
+      <td><button class="btn icon danger sm" data-del="${i}" title="삭제">✕</button></td>
+    </tr>`).join("");
+
+  body.querySelectorAll("input,select").forEach(el=>{
+    el.addEventListener("input", onRCFieldChange);
+    el.addEventListener("change", onRCFieldChange);
+  });
+  body.querySelectorAll("[data-del]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      rcEntries.splice(Number(btn.dataset.del),1);
+      renderRCEntryTable();
+    });
+  });
+  body.querySelectorAll(".toggle-oxo button").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const idx = Number(btn.closest("tr").dataset.idx);
+      rcEntries[idx].checkin_yn = (rcEntries[idx].checkin_yn === btn.dataset.set) ? "" : btn.dataset.set;
+      if(rcEntries[idx].checkin_yn !== "X") rcEntries[idx].cancel_reason = "";
+      renderRCEntryTable();
+    });
+  });
+  updateRCSummary();
+}
+function onRCFieldChange(ev){
+  const tr = ev.target.closest("tr");
+  const idx = Number(tr.dataset.idx);
+  const field = ev.target.dataset.f;
+  rcEntries[idx][field] = ev.target.value;
+  updateRCSummary();
+}
+function updateRCSummary(){
+  const s = summarizeReception(rcEntries);
+  document.getElementById("rc-summary").innerHTML = `
+    <div class="item"><span class="k">예약 접수</span><span class="v total num">${s.resv_count}건</span></div>
+    <div class="item"><span class="k">입고 차량</span><span class="v num">${s.checkin_count}건</span></div>
+    <div class="item"><span class="k">노쇼/미입고</span><span class="v num">${s.noshow_count}건</span></div>
+    <div class="item"><span class="k">예약 취소</span><span class="v num">${s.cancel_count}건</span></div>
+    <div class="item"><span class="k">픽업딜리버리</span><span class="v num">${s.pickdel_count}건</span></div>
+    <div class="item"><span class="k">고객 직접입고</span><span class="v num">${s.customer_visit_count}건</span></div>
+    <div class="item"><span class="k">재예약 O / X</span><span class="v num">${s.rebook_o} / ${s.rebook_x}</span></div>
+  `;
+}
+async function saveRCEntry(){
+  const personId = document.getElementById("rc-person").value;
+  const date = document.getElementById("rc-date").value;
+  if(!personId || !date){ showToast("리셉션 매니저와 일자를 선택해 주세요"); return; }
+  if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
+  const cleaned = rcEntries.filter(e=>e.customer || e.car_no || e.resv_no);
+  if(cleaned.length !== rcEntries.length){ rcEntries = cleaned; renderRCEntryTable(); }
+  const p = roster.reception.find(p=>p.id===personId);
+  const id = rcDocId(personId, date);
+  const summary = summarizeReception(cleaned);
+  const payload = {
+    date, branch: branchName(p.branch), branch_slug: p.branch,
+    manager: p.name, manager_id: p.id,
+    entries: cleaned, summary,
+    submitted_at: new Date().toISOString(),
+  };
+  const btn = document.getElementById("rc-save-btn");
+  btn.disabled = true; btn.textContent = "저장 중…";
+  try{
+    await db.doc("reception_days/"+id).set(payload);
+    receptionDocs.set(id, payload);
+    showToast("저장되었습니다 · " + p.name + " · " + date);
+    renderDashboard();
+  }catch(err){
+    console.error(err);
+    showToast("저장에 실패했습니다. 다시 시도해 주세요.");
+  }finally{
+    btn.disabled = false; btn.textContent = "일마감 저장";
+  }
+}
+
+/* ================================================================ */
+/* SETTINGS                                                            */
+/* ================================================================ */
+function bindSettingsForm(){
+  document.getElementById("add-rc-person").addEventListener("click", ()=>{
+    const name = document.getElementById("new-rc-name").value.trim();
+    const branch = document.getElementById("new-rc-branch").value;
+    if(!name) return;
+    const id = "rc_" + Date.now().toString(36);
+    roster = { ...roster, reception:[...roster.reception, {id,name,branch}] };
+    document.getElementById("new-rc-name").value = "";
+    saveRoster();
+  });
+  document.getElementById("add-sa-person").addEventListener("click", ()=>{
+    const name = document.getElementById("new-sa-name").value.trim();
+    const branch = document.getElementById("new-sa-branch").value;
+    if(!name) return;
+    const id = "sa_" + Date.now().toString(36);
+    roster = { ...roster, sa:[...roster.sa, {id,name,branch}] };
+    document.getElementById("new-sa-name").value = "";
+    saveRoster();
+  });
+  document.getElementById("export-month-btn").addEventListener("click", exportMonthCSV);
+  document.getElementById("cleanup-btn").addEventListener("click", deleteOldData);
+}
+async function saveRoster(){
+  populatePersonSelectors();
+  renderSettings();
+  if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
+  try{ await db.doc("config/roster").set(roster); showToast("저장되었습니다"); }
+  catch(err){ console.error(err); showToast("저장에 실패했습니다"); }
+}
+async function saveTargets(){
+  if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
+  try{ await db.doc("config/targets").set(targets); showToast("목표가 저장되었습니다"); renderDashboard(); }
+  catch(err){ console.error(err); showToast("저장에 실패했습니다"); }
+}
+function renderSettings(){
+  const isAdmin = myIdentity?.role === "admin";
+  document.getElementById("settings-gate").hidden = isAdmin;
+  document.getElementById("settings-body").hidden = !isAdmin;
+  if(!isAdmin) return;
+  document.getElementById("settings-targets").innerHTML = roster.branches.map(b=>`
+    <div class="field-row">
+      <div class="field" style="min-width:80px;"><label>${esc(b.name)}</label></div>
+      <div class="field">
+        <input type="number" step="1000000" id="target-${b.id}" value="${targets[b.id]||0}">
+      </div>
+      <span class="muted">원 / 월</span>
+    </div>`).join("") + `<div><button class="btn primary sm" id="save-targets-btn">목표 저장</button></div>`;
+  document.getElementById("save-targets-btn").addEventListener("click", ()=>{
+    roster.branches.forEach(b=>{
+      targets[b.id] = Number(document.getElementById("target-"+b.id).value) || 0;
+    });
+    saveTargets();
+  });
+
+  document.getElementById("settings-reception").innerHTML = roster.reception.map(p=>`
+    <div class="roster-row">
+      <span class="name">${esc(p.name)}</span>
+      <span class="pill ${p.branch}">${esc(branchName(p.branch))}</span>
+      <span style="flex:1"></span>
+      <button class="btn sm danger" data-remove-rc="${esc(p.id)}">삭제</button>
+    </div>`).join("") || '<p class="muted">등록된 리셉션 매니저가 없습니다</p>';
+  document.getElementById("settings-reception").querySelectorAll("[data-remove-rc]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      roster = { ...roster, reception: roster.reception.filter(p=>p.id!==btn.dataset.removeRc) };
+      saveRoster();
+    });
+  });
+
+  document.getElementById("settings-sa").innerHTML = roster.sa.map(p=>`
+    <div class="roster-row">
+      <span class="name">${esc(p.name)}</span>
+      <span class="pill ${p.branch}">${esc(branchName(p.branch))}</span>
+      <span style="flex:1"></span>
+      <button class="btn sm danger" data-remove-sa="${esc(p.id)}">삭제</button>
+    </div>`).join("") || '<p class="muted">등록된 SA가 없습니다</p>';
+  document.getElementById("settings-sa").querySelectorAll("[data-remove-sa]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      roster = { ...roster, sa: roster.sa.filter(p=>p.id!==btn.dataset.removeSa) };
+      saveRoster();
+    });
+  });
+
+  renderProfilesPanel();
+}
+
+/* ---------------------------------------------------------------- */
+/* 직원 승인 / 역할 관리 (admin only) — Supabase Auth 계정과              */
+/* 이 앱의 역할(관리자/SA/리셉션/뷰어) + 담당자를 연결합니다                */
+/* ---------------------------------------------------------------- */
+const ROLE_LABELS = { pending:"승인 대기", admin:"관리자", sa:"SA", reception:"리셉션", viewer:"뷰어" };
+async function renderProfilesPanel(){
+  const wrap = document.getElementById("settings-profiles");
+  wrap.innerHTML = '<p class="muted">불러오는 중…</p>';
+  const { data, error } = await supabaseClient.from("profiles").select("*").order("created_at", { ascending:false });
+  if(error){ wrap.innerHTML = '<p class="muted">직원 목록을 불러오지 못했습니다.</p>'; return; }
+  if(!data || data.length===0){ wrap.innerHTML = '<p class="muted">가입한 직원이 없습니다.</p>'; return; }
+
+  wrap.innerHTML = data.map(p=>`
+    <div class="approval-row" data-id="${esc(p.id)}">
+      <span style="min-width:130px;font-weight:700;">${esc(p.display_name||p.email||"(이름 없음)")}</span>
+      <span class="muted" style="min-width:160px;font-size:11.5px;">${esc(p.email||"")}</span>
+      <select data-role>
+        ${Object.keys(ROLE_LABELS).map(r=>`<option value="${r}" ${p.role===r?"selected":""}>${ROLE_LABELS[r]}</option>`).join("")}
+      </select>
+      <select data-branch>
+        <option value="">지점 미지정</option>
+        ${roster.branches.map(b=>`<option value="${b.id}" ${p.branch_slug===b.id?"selected":""}>${esc(b.name)}</option>`).join("")}
+      </select>
+      <select data-person>
+        <option value="">담당자 미지정</option>
+        ${roster.sa.map(s=>`<option value="${s.id}" ${p.person_id===s.id?"selected":""}>[SA] ${esc(s.name)}</option>`).join("")}
+        ${roster.reception.map(s=>`<option value="${s.id}" ${p.person_id===s.id?"selected":""}>[리셉션] ${esc(s.name)}</option>`).join("")}
+      </select>
+      <button class="btn sm primary" data-save-profile>저장</button>
+    </div>`).join("");
+
+  wrap.querySelectorAll("[data-save-profile]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const row = btn.closest(".approval-row");
+      const id = row.dataset.id;
+      const role = row.querySelector("[data-role]").value;
+      const branch_slug = row.querySelector("[data-branch]").value || null;
+      const person_id = row.querySelector("[data-person]").value || null;
+      btn.disabled = true; btn.textContent = "저장 중…";
+      const { error } = await supabaseClient.from("profiles").update({ role, branch_slug, person_id, updated_at: new Date().toISOString() }).eq("id", id);
+      btn.disabled = false; btn.textContent = "저장";
+      if(error){ showToast("저장에 실패했습니다"); return; }
+      showToast("저장되었습니다");
+      if(id === myProfile?.id){
+        myProfile = { ...myProfile, role, branch_slug, person_id };
+        myIdentity = { role, personId: person_id, branchSlug: branch_slug };
+        applyIdentityRestrictions();
+        if(role !== "admin") renderSettings();
+      }
+    });
+  });
+}
+
+/* ---------------------------------------------------------------- */
+/* data export / backup / cleanup (admin only)                       */
+/* ---------------------------------------------------------------- */
+function csvEscape(v){
+  const s = String(v ?? "");
+  if(/[",\n]/.test(s)) return '"' + s.replace(/"/g,'""') + '"';
+  return s;
+}
+function buildBackupCSV(saDocsArr, rcDocsArr){
+  const lines = [];
+  lines.push("=== SA 일마감 ===");
+  lines.push(["날짜","지점","SA","RO번호","입고시간","서비스종류","매출금액","출고여부","숙박사유","재입고예정일","재입고사유","로너카사용"].map(csvEscape).join(","));
+  saDocsArr.forEach(data=>{
+    (data.entries||[]).forEach(e=>{
+      lines.push([data.date, branchName(data.branch_slug), data.sa_name, e.ro_no, e.checkin_time, e.svc_type,
+                  e.amount, e.checkout_yn, e.stay_reason, e.return_date, e.return_reason, e.loaner_used].map(csvEscape).join(","));
+    });
+  });
+  lines.push("");
+  lines.push("=== 리셉션 일마감 ===");
+  lines.push(["날짜","지점","매니저","예약시간","접수번호","고객명","차량번호","모델","서비스타입","상태","픽딜/입고","입고여부","사유/비고","재예약"].map(csvEscape).join(","));
+  rcDocsArr.forEach(data=>{
+    (data.entries||[]).forEach(e=>{
+      lines.push([data.date, branchName(data.branch_slug), data.manager, e.resv_dt, e.resv_no, e.customer, e.car_no,
+                  e.model, e.svc_type, e.status, e.pickdel, e.checkin_yn, e.cancel_reason, e.rebook].map(csvEscape).join(","));
+    });
+  });
+  return lines.join("\r\n");
+}
+function downloadTextFile(filename, text){
+  const blob = new Blob(["﻿" + text], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=> URL.revokeObjectURL(url), 2000);
+}
+async function exportMonthCSV(){
+  const ym = document.getElementById("export-month").value;
+  if(!ym){ showToast("내보낼 월을 선택하세요"); return; }
+  if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
+  const btn = document.getElementById("export-month-btn");
+  btn.disabled = true; btn.textContent = "내보내는 중…";
+  try{
+    const {start,end} = monthRangeOf(ym+"-01");
+    const [saSnap, rcSnap] = await Promise.all([
+      db.collection("sa_days").where("date",">=",start).where("date","<=",end).get(),
+      db.collection("reception_days").where("date",">=",start).where("date","<=",end).get(),
+    ]);
+    const csv = buildBackupCSV(saSnap.docs.map(d=>d.data()), rcSnap.docs.map(d=>d.data()));
+    downloadTextFile(`일마감_백업_${ym}.csv`, csv);
+    showToast("내보내기가 완료되었습니다");
+  }catch(err){
+    console.error(err);
+    showToast("내보내기에 실패했습니다");
+  }finally{
+    btn.disabled = false; btn.textContent = "CSV로 내보내기";
+  }
+}
+async function deleteOldData(){
+  const cutoff = document.getElementById("cleanup-cutoff").value;
+  if(!cutoff){ showToast("정리 기준 월을 선택하세요"); return; }
+  if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
+  const cutoffDate = cutoff + "-01";
+  if(!window.confirm(cutoffDate + " 이전의 SA·리셉션 일마감 데이터를 영구 삭제합니다.\n먼저 내보내기(백업)를 완료하셨나요? 계속하시겠습니까?")) return;
+  const btn = document.getElementById("cleanup-btn");
+  btn.disabled = true; btn.textContent = "삭제 중…";
+  try{
+    const [saSnap, rcSnap] = await Promise.all([
+      db.collection("sa_days").where("date","<",cutoffDate).get(),
+      db.collection("reception_days").where("date","<",cutoffDate).get(),
+    ]);
+    for(const d of saSnap.docs){ await db.doc("sa_days/"+d.id).delete(); }
+    for(const d of rcSnap.docs){ await db.doc("reception_days/"+d.id).delete(); }
+    showToast(`${saSnap.docs.length + rcSnap.docs.length}건 삭제되었습니다`);
+  }catch(err){
+    console.error(err);
+    showToast("삭제 중 오류가 발생했습니다");
+  }finally{
+    btn.disabled = false; btn.textContent = "이전 데이터 삭제";
+  }
+}
+
+/* ================================================================ */
+/* LOANER CAR MANAGEMENT                                               */
+/* ================================================================ */
+function loadLoanerEntries(){
+  const byBranch = {};
+  roster.branches.forEach(b=>{ byBranch[b.id] = []; });
+  for(const [id,data] of loanerDocs.entries()){
+    const b = data.branch_slug;
+    if(!byBranch[b]) byBranch[b] = [];
+    byBranch[b].push({ _id:id, ...data });
+  }
+  Object.keys(byBranch).forEach(b=>{
+    byBranch[b].sort((a,b2)=> (a.car_no||"").localeCompare(b2.car_no||""));
+  });
+  loanerEntries = byBranch;
+  renderLoanerTables();
+}
+
+function renderLoanerTables(){
+  const wrap = document.getElementById("loaner-branches");
+  wrap.innerHTML = roster.branches.map(b=>`
+    <div class="card" style="border-top:3px solid ${branchHex(b.id)};">
+      <div class="section-head">
+        <h2>${esc(b.name)} 지점 로너카</h2>
+        <button class="btn sm" data-loaner-add="${b.id}">+ 차량 추가</button>
+      </div>
+      <div class="table-wrap" style="margin-top:10px;">
+        <table class="data entry-table" id="loaner-table-${b.id}">
+          <thead><tr>
+            <th style="width:34px;">#</th><th>차량번호</th><th style="width:100px;">상태</th>
+            <th style="width:140px;">대여 RO번호</th><th style="width:140px;">출고일자</th>
+            <th style="width:140px;">입고 예정일자</th><th style="width:90px;">보증여부</th>
+            <th style="width:130px;">대여 사유</th><th style="width:36px;"></th>
+          </tr></thead>
+          <tbody id="loaner-body-${b.id}"></tbody>
+        </table>
+      </div>
+      <div style="margin-top:10px;"><button class="btn primary sm" data-loaner-save="${b.id}">저장</button></div>
+    </div>`).join("");
+
+  roster.branches.forEach(b=> renderLoanerBranchBody(b.id));
+
+  wrap.querySelectorAll("[data-loaner-add]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const b = btn.dataset.loanerAdd;
+      loanerEntries[b] = loanerEntries[b] || [];
+      loanerEntries[b].push({ _id:null, branch_slug:b, car_no:"", status:"대기중", loan_ro_no:"",
+                               checkout_date:"", expected_return_date:"", warranty:"N", reason:"" });
+      renderLoanerBranchBody(b);
+    });
+  });
+  wrap.querySelectorAll("[data-loaner-save]").forEach(btn=>{
+    btn.addEventListener("click", ()=> saveLoanerBranch(btn.dataset.loanerSave));
+  });
+}
+
+function renderLoanerBranchBody(branchId){
+  const body = document.getElementById("loaner-body-"+branchId);
+  if(!body) return;
+  const rows = loanerEntries[branchId] || [];
+  if(rows.length===0){
+    body.innerHTML = '<tr class="empty-row"><td colspan="9">등록된 로너카가 없습니다</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map((e,i)=>`
+    <tr data-branch="${branchId}" data-idx="${i}">
+      <td class="center muted">${i+1}</td>
+      <td><input type="text" data-f="car_no" value="${esc(e.car_no)}" placeholder="12가3456"></td>
+      <td><select data-f="status">${LOANER_STATUS.map(s=>`<option value="${s}" ${e.status===s?"selected":""}>${s}</option>`).join("")}</select></td>
+      <td><input type="text" data-f="loan_ro_no" value="${esc(e.loan_ro_no)}" placeholder="RO..."></td>
+      <td><input type="date" data-f="checkout_date" value="${esc(e.checkout_date)}"></td>
+      <td><input type="date" data-f="expected_return_date" value="${esc(e.expected_return_date)}"></td>
+      <td><select data-f="warranty">${LOANER_WARRANTY.map(w=>`<option value="${w.v}" ${e.warranty===w.v?"selected":""}>${w.l}</option>`).join("")}</select></td>
+      <td><select data-f="reason"><option value="">-</option>${LOANER_REASONS.map(r=>`<option value="${r}" ${e.reason===r?"selected":""}>${r}</option>`).join("")}</select></td>
+      <td><button class="btn icon danger sm" data-loaner-del="${i}" title="삭제">✕</button></td>
+    </tr>`).join("");
+
+  body.querySelectorAll("input,select").forEach(el=>{
+    el.addEventListener("input", onLoanerFieldChange);
+    el.addEventListener("change", onLoanerFieldChange);
+  });
+  body.querySelectorAll("[data-loaner-del]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      loanerEntries[branchId].splice(Number(btn.dataset.loanerDel),1);
+      renderLoanerBranchBody(branchId);
+    });
+  });
+}
+function onLoanerFieldChange(ev){
+  const tr = ev.target.closest("tr");
+  const branchId = tr.dataset.branch;
+  const idx = Number(tr.dataset.idx);
+  const field = ev.target.dataset.f;
+  loanerEntries[branchId][idx][field] = ev.target.value;
+}
+async function saveLoanerBranch(branchId){
+  if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
+  const rows = (loanerEntries[branchId]||[]).filter(e=>e.car_no && e.car_no.trim());
+  const keepIds = new Set();
+  const btn = document.querySelector(`[data-loaner-save="${branchId}"]`);
+  if(btn){ btn.disabled = true; btn.textContent = "저장 중…"; }
+  try{
+    for(const row of rows){
+      let id = row._id;
+      if(!id){
+        id = `loaner_${branchId}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,6)}`;
+        row._id = id;
+      }
+      keepIds.add(id);
+      const payload = {
+        branch_slug: branchId, car_no: row.car_no, status: row.status || "대기중",
+        loan_ro_no: row.loan_ro_no || "", checkout_date: row.checkout_date || "",
+        expected_return_date: row.expected_return_date || "", warranty: row.warranty || "N",
+        reason: row.reason || "", updated_at: new Date().toISOString(),
+      };
+      await db.doc("loaner_cars/"+id).set(payload);
+    }
+    for(const [id, data] of loanerDocs.entries()){
+      if(data.branch_slug === branchId && !keepIds.has(id)){
+        await db.doc("loaner_cars/"+id).delete();
+      }
+    }
+    loanerEntries[branchId] = rows;
+    renderLoanerBranchBody(branchId);
+    showToast(branchName(branchId) + " 로너카 현황이 저장되었습니다");
+  }catch(err){
+    console.error(err);
+    showToast("저장에 실패했습니다. 다시 시도해 주세요.");
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = "저장"; }
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* theme change -> repaint charts (branch hex differs per theme)      */
+/* ---------------------------------------------------------------- */
+if(window.matchMedia){
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", ()=> renderDashboard());
+}
+
+/* ---------------------------------------------------------------- */
+/* boot                                                                */
+/* ---------------------------------------------------------------- */
+if(document.readyState === "loading"){
+  document.addEventListener("DOMContentLoaded", init);
+} else {
+  init();
+}
+
+})();
+</script>
+</body>
+</html>
