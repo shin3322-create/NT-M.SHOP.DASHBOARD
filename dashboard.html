@@ -132,6 +132,11 @@
   section.view{ display:flex; flex-direction:column; gap:22px; }
   section.view[hidden]{ display:none; }
 
+  /* #app-loading / #app-pending carry an inline display:flex for their initial
+     state; without this !important override, setting .hidden=true in JS has
+     no visible effect because inline styles beat the [hidden] UA rule. */
+  #app-loading[hidden], #app-pending[hidden]{ display:none !important; }
+
   /* ---------- cards / grid ---------- */
   .card{
     background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
