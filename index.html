@@ -52,6 +52,12 @@
   .msg.ok{ display:block; background:var(--good-bg); color:var(--good); }
   .switch{ text-align:center; font-size:12.5px; color:var(--text-muted); margin-top:16px; }
   .switch a{ color:var(--accent); font-weight:700; cursor:pointer; text-decoration:none; }
+  .email-group{ display:flex; align-items:stretch; border:1px solid var(--border); border-radius:9px; overflow:hidden; background:var(--surface); }
+  .email-group input{ flex:1; min-width:0; border:none; border-radius:0; padding:10px 11px; font-size:14px;
+                       font-family:inherit; background:transparent; color:var(--text-primary); }
+  .email-group input:focus{ outline:none; }
+  .email-group .email-suffix{ display:flex; align-items:center; padding:0 10px; background:var(--surface-2);
+                               color:var(--text-muted); font-size:13px; white-space:nowrap; border-left:1px solid var(--border); }
 </style>
 </head>
 <body>
@@ -63,14 +69,24 @@
     <div id="msg" class="msg"></div>
 
     <form id="login-form">
-      <div class="field"><label for="login-email">이메일</label><input id="login-email" type="email" autocomplete="username" required></div>
+      <div class="field"><label for="login-email">이메일</label>
+        <div class="email-group">
+          <input id="login-email" type="text" autocomplete="username" required placeholder="이름 또는 아이디">
+          <span class="email-suffix">@nationalmotors.co.kr</span>
+        </div>
+      </div>
       <div class="field"><label for="login-password">비밀번호</label><input id="login-password" type="password" autocomplete="current-password" required></div>
       <button class="btn" id="login-btn" type="submit">로그인</button>
     </form>
 
     <form id="signup-form" hidden>
       <div class="field"><label for="signup-name">이름</label><input id="signup-name" type="text" required></div>
-      <div class="field"><label for="signup-email">이메일</label><input id="signup-email" type="email" autocomplete="username" required></div>
+      <div class="field"><label for="signup-email">이메일</label>
+        <div class="email-group">
+          <input id="signup-email" type="text" autocomplete="username" required placeholder="이름 또는 아이디">
+          <span class="email-suffix">@nationalmotors.co.kr</span>
+        </div>
+      </div>
       <div class="field"><label for="signup-password">비밀번호 (6자 이상)</label><input id="signup-password" type="password" autocomplete="new-password" minlength="6" required></div>
       <button class="btn" id="signup-btn" type="submit">가입 신청</button>
     </form>
@@ -87,6 +103,13 @@
 (function(){
   "use strict";
   const supabase = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY);
+
+  const EMAIL_DOMAIN = "@nationalmotors.co.kr";
+  function buildEmail(localPart){
+    const v = (localPart || "").trim();
+    if(!v) return "";
+    return v.includes("@") ? v : v + EMAIL_DOMAIN;
+  }
 
   const msgEl = document.getElementById("msg");
   function showMsg(text, type){
@@ -113,7 +136,7 @@
   document.getElementById("login-form").addEventListener("submit", async (e)=>{
     e.preventDefault();
     clearMsg();
-    const email = document.getElementById("login-email").value.trim();
+    const email = buildEmail(document.getElementById("login-email").value);
     const password = document.getElementById("login-password").value;
     const btn = document.getElementById("login-btn");
     btn.disabled = true; btn.textContent = "로그인 중…";
@@ -127,7 +150,7 @@
     e.preventDefault();
     clearMsg();
     const name = document.getElementById("signup-name").value.trim();
-    const email = document.getElementById("signup-email").value.trim();
+    const email = buildEmail(document.getElementById("signup-email").value);
     const password = document.getElementById("signup-password").value;
     const btn = document.getElementById("signup-btn");
     btn.disabled = true; btn.textContent = "가입 신청 중…";
