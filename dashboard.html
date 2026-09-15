@@ -439,7 +439,7 @@
             <th style="width:150px;">서비스 종류</th><th style="width:130px;">매출 금액</th>
             <th style="width:90px;">출고</th><th style="width:110px;">숙박 사유</th>
             <th style="width:120px;">재입고 예정일</th><th style="width:110px;">재입고 사유</th>
-            <th style="width:70px;">로너카</th><th style="width:36px;"></th>
+            <th style="width:120px;">로너카</th><th style="width:36px;"></th>
           </tr></thead>
           <tbody id="sa-entry-body"></tbody>
         </table>
@@ -510,7 +510,7 @@
   <!-- ===================== LOANER CAR MANAGEMENT ===================== -->
   <section class="view" id="view-loaner" hidden>
     <div class="card">
-      <div class="section-head"><h2>지점별 로너카 관리</h2><span class="hint">차량번호·상태·대여 RO번호·출고일자·입고 예정일자·보증여부·대여 사유를 관리합니다</span></div>
+      <div class="section-head"><h2>지점별 로너카 관리</h2><span class="hint">차량번호만 등록하면 됩니다. 사용 현황(대여중/대기중)은 어드바이저 일마감 입력의 로너카 선택 내용이 자동으로 반영됩니다.</span></div>
     </div>
     <div id="loaner-branches" style="display:flex;flex-direction:column;gap:22px;"></div>
   </section>
@@ -627,9 +627,6 @@ const RC_PICKDEL = ["","픽딜","고객입고"];
 const STAY_REASONS = ["부품대기","수리 중","진단","수리완료"];
 const CANCEL_REASONS = ["고객사정","일정변경","부품대기","기타"];
 const REOPEN_REASONS = ["부품대기","재 점검","재수리","기타"];
-const LOANER_STATUS = ["대여중","대기중"];
-const LOANER_WARRANTY = [{v:"Y",l:"있음"},{v:"N",l:"없음"}];
-const LOANER_REASONS = ["부품부족","고객불만","자사출고"];
 
 /* ---------------------------------------------------------------- */
 /* state                                                              */
@@ -1036,13 +1033,18 @@ function renderDashboard(){
   renderReceptionTable(today);
 }
 
+const RETURN_STATUS_BUTTONS = [
+  { key:"입고대기", label:"입고 대기" },
+  { key:"부품대기", label:"부품 대기" },
+  { key:"수리완료", label:"수리완료" },
+];
 function collectReturnVehicles(){
   const rows = [];
-  for(const doc of saDocs.values()){
+  for(const [docId, doc] of saDocs.entries()){
     for(const e of (doc.entries||[])){
       if(e.return_date){
-        rows.push({ ro_no:e.ro_no, return_date:e.return_date, return_reason:e.return_reason||"",
-                    branch:doc.branch_slug, sa_name:doc.sa_name });
+        rows.push({ docId, ro_no:e.ro_no, return_date:e.return_date, return_reason:e.return_reason||"",
+                    return_status:e.return_status||"", branch:doc.branch_slug, sa_name:doc.sa_name });
       }
     }
   }
@@ -1056,21 +1058,61 @@ function renderReturnTable(today){
     <thead><tr><th>RO 번호</th><th>지점</th><th>담당 SA</th><th>재입고 예정일</th><th>사유</th><th>상태</th></tr></thead>
     <tbody>
       ${rows.map(r=>{
-        let statusLabel, statusStyle;
-        if(r.return_date === today){ statusLabel="오늘"; statusStyle="color:var(--warning);font-weight:900;"; }
-        else if(r.return_date < today){ statusLabel="지남"; statusStyle="color:var(--critical);font-weight:900;"; }
-        else { statusLabel="예정"; statusStyle="color:var(--text-muted);"; }
-        return `<tr>
+        let dateStyle;
+        if(r.return_date === today){ dateStyle="color:var(--warning);font-weight:900;"; }
+        else if(r.return_date < today){ dateStyle="color:var(--critical);font-weight:900;"; }
+        else { dateStyle="color:var(--text-muted);"; }
+        return `<tr data-doc="${esc(r.docId)}" data-ro="${esc(r.ro_no)}">
           <td>${esc(r.ro_no)}</td>
           <td><span class="pill ${r.branch}">${esc(branchName(r.branch))}</span></td>
           <td>${esc(r.sa_name)}</td>
-          <td class="num">${esc(r.return_date)}</td>
+          <td class="num" style="${dateStyle}">${esc(r.return_date)}</td>
           <td>${esc(r.return_reason)}</td>
-          <td style="${statusStyle}">${statusLabel}</td>
+          <td>
+            <div class="stay-status-group">
+              ${RETURN_STATUS_BUTTONS.map(s=>`<button type="button" class="stay-status-btn ${r.return_status===s.key?'active':''}" data-status="${esc(s.key)}">${esc(s.label)}</button>`).join("")}
+            </div>
+          </td>
         </tr>`;
       }).join("") || '<tr class="empty-row"><td colspan="6">재입고 예정 차량이 없습니다</td></tr>'}
     </tbody>`;
-  document.getElementById("table-return").innerHTML = html;
+  const wrap = document.getElementById("table-return");
+  wrap.innerHTML = html;
+  wrap.querySelectorAll(".stay-status-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const tr = btn.closest("tr");
+      updateReturnStatus(tr.dataset.doc, tr.dataset.ro, btn.dataset.status);
+    });
+  });
+}
+async function updateReturnStatus(docId, roNo, status){
+  if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
+  try{
+    const snap = await db.doc("sa_days/"+docId).get();
+    if(!snap.exists){ showToast("데이터를 찾을 수 없습니다"); return; }
+    const data = snap.data();
+    const entries = (data.entries||[]).map(e=>({...e}));
+    const idx = entries.findIndex(e=>e.ro_no === roNo);
+    if(idx === -1){ showToast("해당 RO를 찾을 수 없습니다"); return; }
+    if(status === "수리완료"){
+      entries[idx].checkout_yn = "O";
+      entries[idx].return_date = "";
+      entries[idx].return_reason = "";
+      entries[idx].return_status = "";
+    }else{
+      entries[idx].return_status = status;
+    }
+    const summary = bucketSA(entries);
+    const payload = { ...data, entries, summary, submitted_at: new Date().toISOString() };
+    await db.doc("sa_days/"+docId).set(payload);
+    saDocs.set(docId, payload);
+    const label = RETURN_STATUS_BUTTONS.find(s=>s.key===status)?.label || status;
+    showToast(status==="수리완료" ? `${roNo} 수리완료 처리되어 재입고 목록에서 제외되고 출고가 O로 변경되었습니다` : `${roNo} 상태를 "${label}"(으)로 변경했습니다`);
+    renderDashboard();
+  }catch(err){
+    console.error(err);
+    showToast("상태 변경 중 오류가 발생했습니다");
+  }
 }
 
 /* ---------------------------------------------------------------- */
@@ -1168,38 +1210,52 @@ async function updateStayStatus(docId, roNo, status){
   }
 }
 
+function computeLoanerUsage(){
+  // key `${branch_slug}|${car_no}` -> { ro_no, sa_name, date }  (아직 출고되지 않은, 로너카를 사용 중인 RO)
+  const usage = new Map();
+  for(const doc of saDocs.values()){
+    for(const e of (doc.entries||[])){
+      if(e.loaner_used === "O" && e.loaner_car_no && e.checkout_yn !== "O"){
+        usage.set(doc.branch_slug + "|" + e.loaner_car_no, { ro_no:e.ro_no, sa_name:doc.sa_name, date:doc.date });
+      }
+    }
+  }
+  return usage;
+}
 function renderLoanerSummary(){
   const wrap = document.getElementById("table-loaner");
   if(!wrap) return;
-  const rows = [...loanerDocs.values()];
+  const usage = computeLoanerUsage();
+  const rows = [...loanerDocs.values()].map(r=>{
+    const u = usage.get(r.branch_slug + "|" + r.car_no);
+    return { ...r, _inUse: !!u, _usage: u || null };
+  });
   rows.sort((a,b)=>{
-    if(a.status !== b.status) return a.status==="대여중" ? -1 : 1;
-    return (a.branch_slug||"").localeCompare(b.branch_slug||"");
+    if(a._inUse !== b._inUse) return a._inUse ? -1 : 1;
+    return (a.branch_slug||"").localeCompare(b.branch_slug||"") || (a.car_no||"").localeCompare(b.car_no||"");
   });
   const counts = {};
   roster.branches.forEach(b=> counts[b.id] = {inuse:0, waiting:0});
   rows.forEach(r=>{
     if(!counts[r.branch_slug]) counts[r.branch_slug] = {inuse:0, waiting:0};
-    if(r.status==="대여중") counts[r.branch_slug].inuse++; else counts[r.branch_slug].waiting++;
+    if(r._inUse) counts[r.branch_slug].inuse++; else counts[r.branch_slug].waiting++;
   });
   const hint = document.getElementById("loaner-summary-hint");
   if(hint){
     hint.textContent = roster.branches.map(b=>`${b.name} 대여중 ${counts[b.id]?.inuse||0}·대기 ${counts[b.id]?.waiting||0}`).join("   ·   ");
   }
   const html = `
-    <thead><tr><th>지점</th><th>차량번호</th><th>상태</th><th>대여 RO번호</th><th>출고일자</th><th>입고 예정일자</th><th>보증여부</th><th>대여 사유</th></tr></thead>
+    <thead><tr><th>지점</th><th>차량번호</th><th>상태</th><th>대여 RO번호</th><th>담당 SA</th><th>대여일</th></tr></thead>
     <tbody>
       ${rows.map(r=>`
         <tr>
           <td><span class="pill ${r.branch_slug}">${esc(branchName(r.branch_slug))}</span></td>
           <td>${esc(r.car_no)}</td>
-          <td style="${r.status==='대여중'?'color:var(--warning);font-weight:900;':'color:var(--text-muted);'}">${esc(r.status)}</td>
-          <td class="num">${esc(r.loan_ro_no)}</td>
-          <td class="num">${esc(r.checkout_date)}</td>
-          <td class="num">${esc(r.expected_return_date)}</td>
-          <td>${r.warranty==='Y'?'있음':'없음'}</td>
-          <td>${esc(r.reason)}</td>
-        </tr>`).join("") || '<tr class="empty-row"><td colspan="8">등록된 로너카가 없습니다</td></tr>'}
+          <td style="${r._inUse?'color:var(--warning);font-weight:900;':'color:var(--text-muted);'}">${r._inUse?'대여중':'대기중'}</td>
+          <td class="num">${esc(r._usage ? r._usage.ro_no : "")}</td>
+          <td>${esc(r._usage ? r._usage.sa_name : "")}</td>
+          <td class="num">${esc(r._usage ? r._usage.date : "")}</td>
+        </tr>`).join("") || '<tr class="empty-row"><td colspan="6">등록된 로너카가 없습니다</td></tr>'}
     </tbody>`;
   wrap.innerHTML = html;
 }
@@ -1600,7 +1656,7 @@ function bindSAForm(){
   document.getElementById("sa-date").addEventListener("change", loadSAEntry);
   document.getElementById("sa-add-row").addEventListener("click", ()=>{
     saEntries.push({ ro_no:"", checkin_time:"", checkout_yn:"", stay_reason:"", svc_type:"RETAIL", amount:"",
-                      return_date:"", return_reason:"", loaner_used:"" });
+                      return_date:"", return_reason:"", return_status:"", loaner_used:"", loaner_car_no:"" });
     renderSAEntryTable();
   });
   document.getElementById("sa-save-btn").addEventListener("click", saveSAEntry);
@@ -1628,6 +1684,14 @@ function readSAEntriesFromDOM(){
   // values are kept live in saEntries via input handlers; this is just a safety no-op
   return saEntries;
 }
+function loanerCarOptionsForBranch(branchId){
+  return [...loanerDocs.values()].filter(c=>c.branch_slug===branchId).map(c=>c.car_no).filter(Boolean).sort();
+}
+function currentSABranch(){
+  const personId = document.getElementById("sa-person")?.value;
+  const p = roster.sa.find(x=>x.id===personId);
+  return p ? p.branch : null;
+}
 function renderSAEntryTable(){
   const body = document.getElementById("sa-entry-body");
   if(saEntries.length===0){
@@ -1635,6 +1699,8 @@ function renderSAEntryTable(){
     updateSASummary();
     return;
   }
+  const branchId = currentSABranch();
+  const loanerOptions = loanerCarOptionsForBranch(branchId);
   body.innerHTML = saEntries.map((e,i)=>`
     <tr data-idx="${i}">
       <td class="center muted">${i+1}</td>
@@ -1666,6 +1732,11 @@ function renderSAEntryTable(){
           <button type="button" class="on-o ${e.loaner_used==='O'?'active':''}" data-loaner-set="O">O</button>
           <button type="button" class="on-x ${e.loaner_used==='X'?'active':''}" data-loaner-set="X">X</button>
         </div>
+        ${e.loaner_used==='O' ? `
+        <select data-f="loaner_car_no" style="margin-top:4px;width:100%;">
+          <option value="">차량 선택</option>
+          ${loanerOptions.length ? loanerOptions.map(c=>`<option value="${esc(c)}" ${e.loaner_car_no===c?"selected":""}>${esc(c)}</option>`).join("") : `<option value="" disabled>등록된 로너카 없음</option>`}
+        </select>` : ``}
       </td>
       <td><button class="btn icon danger sm" data-del="${i}" title="삭제">✕</button></td>
     </tr>`).join("");
@@ -1692,6 +1763,7 @@ function renderSAEntryTable(){
     btn.addEventListener("click", ()=>{
       const idx = Number(btn.closest("tr").dataset.idx);
       saEntries[idx].loaner_used = (saEntries[idx].loaner_used === btn.dataset.loanerSet) ? "" : btn.dataset.loanerSet;
+      if(saEntries[idx].loaner_used !== "O") saEntries[idx].loaner_car_no = "";
       renderSAEntryTable();
     });
   });
@@ -2059,11 +2131,11 @@ function csvEscape(v){
 function buildBackupCSV(saDocsArr, rcDocsArr){
   const lines = [];
   lines.push("=== SA 일마감 ===");
-  lines.push(["날짜","지점","SA","RO번호","입고시간","서비스종류","매출금액","출고여부","숙박사유","재입고예정일","재입고사유","로너카사용"].map(csvEscape).join(","));
+  lines.push(["날짜","지점","SA","RO번호","입고시간","서비스종류","매출금액","출고여부","숙박사유","재입고예정일","재입고사유","로너카사용","로너카번호"].map(csvEscape).join(","));
   saDocsArr.forEach(data=>{
     (data.entries||[]).forEach(e=>{
       lines.push([data.date, branchName(data.branch_slug), data.sa_name, e.ro_no, e.checkin_time, e.svc_type,
-                  e.amount, e.checkout_yn, e.stay_reason, e.return_date, e.return_reason, e.loaner_used].map(csvEscape).join(","));
+                  e.amount, e.checkout_yn, e.stay_reason, e.return_date, e.return_reason, e.loaner_used, e.loaner_car_no].map(csvEscape).join(","));
     });
   });
   lines.push("");
@@ -2160,10 +2232,7 @@ function renderLoanerTables(){
       <div class="table-wrap" style="margin-top:10px;">
         <table class="data entry-table" id="loaner-table-${b.id}">
           <thead><tr>
-            <th style="width:34px;">#</th><th>차량번호</th><th style="width:100px;">상태</th>
-            <th style="width:140px;">대여 RO번호</th><th style="width:140px;">출고일자</th>
-            <th style="width:140px;">입고 예정일자</th><th style="width:90px;">보증여부</th>
-            <th style="width:130px;">대여 사유</th><th style="width:36px;"></th>
+            <th style="width:34px;">#</th><th>차량번호</th><th style="width:220px;">현재 상태</th><th style="width:36px;"></th>
           </tr></thead>
           <tbody id="loaner-body-${b.id}"></tbody>
         </table>
@@ -2177,8 +2246,7 @@ function renderLoanerTables(){
     btn.addEventListener("click", ()=>{
       const b = btn.dataset.loanerAdd;
       loanerEntries[b] = loanerEntries[b] || [];
-      loanerEntries[b].push({ _id:null, branch_slug:b, car_no:"", status:"대기중", loan_ro_no:"",
-                               checkout_date:"", expected_return_date:"", warranty:"N", reason:"" });
+      loanerEntries[b].push({ _id:null, branch_slug:b, car_no:"" });
       renderLoanerBranchBody(b);
     });
   });
@@ -2192,23 +2260,22 @@ function renderLoanerBranchBody(branchId){
   if(!body) return;
   const rows = loanerEntries[branchId] || [];
   if(rows.length===0){
-    body.innerHTML = '<tr class="empty-row"><td colspan="9">등록된 로너카가 없습니다</td></tr>';
+    body.innerHTML = '<tr class="empty-row"><td colspan="4">등록된 로너카가 없습니다</td></tr>';
     return;
   }
-  body.innerHTML = rows.map((e,i)=>`
+  const usage = computeLoanerUsage();
+  body.innerHTML = rows.map((e,i)=>{
+    const u = usage.get(branchId + "|" + e.car_no);
+    return `
     <tr data-branch="${branchId}" data-idx="${i}">
       <td class="center muted">${i+1}</td>
       <td><input type="text" data-f="car_no" value="${esc(e.car_no)}" placeholder="12가3456"></td>
-      <td><select data-f="status">${LOANER_STATUS.map(s=>`<option value="${s}" ${e.status===s?"selected":""}>${s}</option>`).join("")}</select></td>
-      <td><input type="text" data-f="loan_ro_no" value="${esc(e.loan_ro_no)}" placeholder="RO..."></td>
-      <td><input type="date" data-f="checkout_date" value="${esc(e.checkout_date)}"></td>
-      <td><input type="date" data-f="expected_return_date" value="${esc(e.expected_return_date)}"></td>
-      <td><select data-f="warranty">${LOANER_WARRANTY.map(w=>`<option value="${w.v}" ${e.warranty===w.v?"selected":""}>${w.l}</option>`).join("")}</select></td>
-      <td><select data-f="reason"><option value="">-</option>${LOANER_REASONS.map(r=>`<option value="${r}" ${e.reason===r?"selected":""}>${r}</option>`).join("")}</select></td>
+      <td style="${u?'color:var(--warning);font-weight:900;':'color:var(--text-muted);'}">${u?`대여중 (${esc(u.ro_no)}·${esc(u.sa_name)})`:'대기중'}</td>
       <td><button class="btn icon danger sm" data-loaner-del="${i}" title="삭제">✕</button></td>
-    </tr>`).join("");
+    </tr>`;
+  }).join("");
 
-  body.querySelectorAll("input,select").forEach(el=>{
+  body.querySelectorAll("input").forEach(el=>{
     el.addEventListener("input", onLoanerFieldChange);
     el.addEventListener("change", onLoanerFieldChange);
   });
@@ -2241,10 +2308,7 @@ async function saveLoanerBranch(branchId){
       }
       keepIds.add(id);
       const payload = {
-        branch_slug: branchId, car_no: row.car_no, status: row.status || "대기중",
-        loan_ro_no: row.loan_ro_no || "", checkout_date: row.checkout_date || "",
-        expected_return_date: row.expected_return_date || "", warranty: row.warranty || "N",
-        reason: row.reason || "", updated_at: new Date().toISOString(),
+        branch_slug: branchId, car_no: row.car_no, updated_at: new Date().toISOString(),
       };
       await db.doc("loaner_cars/"+id).set(payload);
     }
