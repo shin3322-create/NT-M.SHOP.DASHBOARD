@@ -299,6 +299,7 @@
 </head>
 <body>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="config.js"></script>
 <script src="supabase-adapter.js"></script>
 <div id="app-loading" style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:'Noto Sans KR',sans-serif;color:#898781;">확인 중…</div>
@@ -402,11 +403,19 @@
         <div class="field" style="min-width:auto;">
           <button class="btn ghost sm" id="sa-load-btn">불러오기</button>
         </div>
+        <div class="field" style="min-width:auto;">
+          <button class="btn ghost sm" type="button" id="sa-template-btn">엑셀 양식</button>
+        </div>
+        <div class="field" style="min-width:auto;">
+          <button class="btn ghost sm" type="button" id="sa-excel-btn">엑셀 업로드</button>
+          <input type="file" id="sa-excel-input" accept=".xlsx,.xls,.csv" hidden>
+        </div>
         <div class="field" style="flex:1;"></div>
         <div class="field" style="min-width:auto;">
           <button class="btn primary" id="sa-save-btn">일마감 저장</button>
         </div>
       </div>
+      <div class="hint" style="margin-top:8px;">엑셀 업로드는 위에서 선택한 SA·일자의 RO 목록 뒤에 추가됩니다 (기존 목록은 지워지지 않음). 과거 날짜(예: 9월 14일 이전) 자료도 일자만 바꿔서 같은 방식으로 올릴 수 있습니다.</div>
     </div>
 
     <div class="card">
@@ -450,11 +459,19 @@
         <div class="field" style="min-width:auto;">
           <button class="btn ghost sm" id="rc-load-btn">불러오기</button>
         </div>
+        <div class="field" style="min-width:auto;">
+          <button class="btn ghost sm" type="button" id="rc-template-btn">엑셀 양식</button>
+        </div>
+        <div class="field" style="min-width:auto;">
+          <button class="btn ghost sm" type="button" id="rc-excel-btn">엑셀 업로드</button>
+          <input type="file" id="rc-excel-input" accept=".xlsx,.xls,.csv" hidden>
+        </div>
         <div class="field" style="flex:1;"></div>
         <div class="field" style="min-width:auto;">
           <button class="btn primary" id="rc-save-btn">일마감 저장</button>
         </div>
       </div>
+      <div class="hint" style="margin-top:8px;">엑셀 업로드는 위에서 선택한 매니저·일자의 예약 목록 뒤에 추가됩니다 (기존 목록은 지워지지 않음).</div>
     </div>
 
     <div class="card">
@@ -1378,6 +1395,139 @@ function renderServiceBarChart(today){
 /* ================================================================ */
 /* SA INPUT FORM                                                       */
 /* ================================================================ */
+/* Excel 업로드 — SA / 리셉션 일마감 빠른 입력 (xlsx 라이브러리 사용)   */
+/* ================================================================ */
+function excelCellToHHMM(v){
+  if(v === undefined || v === null || v === "") return "";
+  if(v instanceof Date) return String(v.getUTCHours()).padStart(2,"0") + ":" + String(v.getUTCMinutes()).padStart(2,"0");
+  if(typeof v === "number"){
+    if(v > 0 && v < 1){ const totalMin = Math.round(v*24*60); return String(Math.floor(totalMin/60)).padStart(2,"0") + ":" + String(totalMin%60).padStart(2,"0"); }
+    return "";
+  }
+  const s = String(v).trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  if(m) return m[1].padStart(2,"0") + ":" + m[2];
+  return "";
+}
+function excelCellToYMD(v){
+  if(v === undefined || v === null || v === "") return "";
+  if(v instanceof Date) return v.getUTCFullYear() + "-" + String(v.getUTCMonth()+1).padStart(2,"0") + "-" + String(v.getUTCDate()).padStart(2,"0");
+  const s = String(v).trim();
+  const m = s.match(/^(\d{4})[.\-\/](\d{1,2})[.\-\/](\d{1,2})/);
+  if(m) return m[1] + "-" + m[2].padStart(2,"0") + "-" + m[3].padStart(2,"0");
+  return "";
+}
+function excelCellToOX(v){
+  const s = String(v ?? "").trim().toUpperCase();
+  if(s === "O" || s === "예" || s === "Y" || s === "YES") return "O";
+  if(s === "X" || s === "아니오" || s === "N" || s === "NO") return "X";
+  return "";
+}
+function excelCellToText(v){ return (v===undefined||v===null) ? "" : String(v).trim(); }
+function excelCellToNumber(v){
+  if(typeof v === "number") return v;
+  const s = String(v ?? "").replace(/[,원\s]/g,"");
+  const n = Number(s);
+  return isNaN(n) || s==="" ? "" : n;
+}
+function matchFromList(v, list, fallback){
+  const s = excelCellToText(v);
+  if(!s) return fallback;
+  const hit = list.find(x=>x===s) || list.find(x=>String(x).toLowerCase()===s.toLowerCase());
+  return hit !== undefined ? hit : s;
+}
+function readWorkbookFirstSheetRows(arrayBuffer){
+  const wb = XLSX.read(arrayBuffer, { type:"array", cellDates:true });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  return XLSX.utils.sheet_to_json(sheet, { defval:"" });
+}
+function downloadSATemplate(){
+  const rows = [
+    ["RO번호","입고시간","서비스종류","매출금액","출고여부","숙박사유","재입고예정일","재입고사유","로너카사용"],
+    ["RO2609000123","09:30","RETAIL",350000,"O","","","","X"],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "SA일마감");
+  XLSX.writeFile(wb, "SA_일마감_양식.xlsx");
+}
+function downloadRCTemplate(){
+  const rows = [
+    ["예약시간","접수번호","고객명","차량번호","모델","서비스타입","상태","픽딜/입고","입고여부","사유/비고","재예약"],
+    ["09:00","SB1234567","홍길동","12가3456","5시리즈","Maintenance","예약접수","","O","","X"],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "리셉션일마감");
+  XLSX.writeFile(wb, "리셉션_일마감_양식.xlsx");
+}
+async function handleSAExcelFile(file){
+  if(!file) return;
+  try{
+    const buf = await file.arrayBuffer();
+    const rows = readWorkbookFirstSheetRows(buf);
+    let added = 0;
+    rows.forEach(r=>{
+      const ro_no = excelCellToText(r["RO번호"] ?? r["RO 번호"]);
+      if(!ro_no) return;
+      saEntries.push({
+        ro_no,
+        checkin_time: excelCellToHHMM(r["입고시간"] ?? r["입고 시간"]),
+        svc_type: matchFromList(r["서비스종류"] ?? r["서비스 종류"], SA_SERVICE_TYPES, "RETAIL"),
+        amount: excelCellToNumber(r["매출금액"] ?? r["매출 금액"]),
+        checkout_yn: excelCellToOX(r["출고여부"] ?? r["출고"]),
+        stay_reason: matchFromList(r["숙박사유"] ?? r["숙박 사유"], STAY_REASONS, ""),
+        return_date: excelCellToYMD(r["재입고예정일"] ?? r["재입고 예정일"]),
+        return_reason: matchFromList(r["재입고사유"] ?? r["재입고 사유"], REOPEN_REASONS, ""),
+        loaner_used: excelCellToOX(r["로너카사용"] ?? r["로너카"]),
+      });
+      added++;
+    });
+    renderSAEntryTable();
+    showToast(added>0 ? `${added}건을 불러왔습니다. 확인 후 '일마감 저장'을 눌러주세요.` : "업로드할 RO 행을 찾지 못했습니다. 양식을 확인해 주세요.");
+  }catch(err){
+    console.error(err);
+    showToast("엑셀 파일을 읽는 중 오류가 발생했습니다");
+  }
+}
+async function handleRCExcelFile(file){
+  if(!file) return;
+  try{
+    const buf = await file.arrayBuffer();
+    const rows = readWorkbookFirstSheetRows(buf);
+    let added = 0;
+    rows.forEach(r=>{
+      const customer = excelCellToText(r["고객명"]);
+      const car_no = excelCellToText(r["차량번호"] ?? r["차량 번호"]);
+      const resv_no = excelCellToText(r["접수번호"] ?? r["접수 번호"]);
+      if(!customer && !car_no && !resv_no) return;
+      rcEntries.push({
+        resv_dt: excelCellToHHMM(r["예약시간"] ?? r["예약 시간"]),
+        checkin_dt: "",
+        resv_no,
+        customer,
+        car_no,
+        vin: "",
+        model: excelCellToText(r["모델"]),
+        svc_type: matchFromList(r["서비스타입"] ?? r["서비스 타입"], RC_SERVICE_TYPES, "Maintenance"),
+        status: matchFromList(r["상태"], RC_STATUS, "예약접수"),
+        pickdel: matchFromList(r["픽딜/입고"] ?? r["픽딜"], RC_PICKDEL, ""),
+        checkin_yn: excelCellToOX(r["입고여부"] ?? r["입고"]),
+        cancel_reason: excelCellToText(r["사유/비고"] ?? r["사유"]),
+        rebook: excelCellToOX(r["재예약"]),
+        rebook_dt: "",
+        receiver: "",
+      });
+      added++;
+    });
+    renderRCEntryTable();
+    showToast(added>0 ? `${added}건을 불러왔습니다. 확인 후 '일마감 저장'을 눌러주세요.` : "업로드할 예약 행을 찾지 못했습니다. 양식을 확인해 주세요.");
+  }catch(err){
+    console.error(err);
+    showToast("엑셀 파일을 읽는 중 오류가 발생했습니다");
+  }
+}
+
 function bindSAForm(){
   document.getElementById("sa-load-btn").addEventListener("click", loadSAEntry);
   document.getElementById("sa-person").addEventListener("change", loadSAEntry);
@@ -1388,6 +1538,13 @@ function bindSAForm(){
     renderSAEntryTable();
   });
   document.getElementById("sa-save-btn").addEventListener("click", saveSAEntry);
+  document.getElementById("sa-template-btn").addEventListener("click", downloadSATemplate);
+  document.getElementById("sa-excel-btn").addEventListener("click", ()=>document.getElementById("sa-excel-input").click());
+  document.getElementById("sa-excel-input").addEventListener("change", (ev)=>{
+    const f = ev.target.files[0];
+    handleSAExcelFile(f);
+    ev.target.value = "";
+  });
 }
 function saDocId(personId, date){
   const p = roster.sa.find(p=>p.id===personId);
@@ -1556,6 +1713,13 @@ function bindReceptionForm(){
     renderRCEntryTable();
   });
   document.getElementById("rc-save-btn").addEventListener("click", saveRCEntry);
+  document.getElementById("rc-template-btn").addEventListener("click", downloadRCTemplate);
+  document.getElementById("rc-excel-btn").addEventListener("click", ()=>document.getElementById("rc-excel-input").click());
+  document.getElementById("rc-excel-input").addEventListener("change", (ev)=>{
+    const f = ev.target.files[0];
+    handleRCExcelFile(f);
+    ev.target.value = "";
+  });
 }
 function rcDocId(personId, date){
   const p = roster.reception.find(p=>p.id===personId);
