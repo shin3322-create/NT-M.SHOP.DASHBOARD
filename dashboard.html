@@ -510,7 +510,7 @@
           <thead><tr>
             <th style="width:34px;">#</th><th style="width:88px;">예약 시간</th><th style="width:120px;">접수번호</th>
             <th>고객명</th><th>차량번호</th><th>모델</th><th style="width:150px;">서비스 타입</th>
-            <th style="width:110px;">상태</th><th style="width:80px;">예약여부</th><th style="width:100px;">픽딜/입고</th><th style="width:70px;">입고</th>
+            <th style="width:110px;">상태</th><th style="width:100px;">픽딜/입고</th><th style="width:70px;">입고</th>
             <th>사유/비고</th><th style="width:70px;">재예약</th><th style="width:36px;"></th>
           </tr></thead>
           <tbody id="rc-entry-body"></tbody>
@@ -639,7 +639,7 @@ const DEFAULT_TARGETS = { gunsan:253000000, mokpo:310000000, seosan:300000000 };
 const SA_SERVICE_TYPES = ["RETAIL","BSI","W 보증","RECALL","보험","내부처리","SP판매","WP판매"];
 const SA_REVENUE_CATS  = ["RETAIL","BSI","W 보증","RECALL","보험","내부처리"];
 const RC_SERVICE_TYPES = ["Maintenance","Recall/TC","경수리","중수리","진단","소음","사고수리","입고 Proactive-RITA"];
-const RC_STATUS = ["예약접수","차량접수","예약취소","No Show"];
+const RC_STATUS = ["예약접수","차량접수","예약취소","No Show","비예약"];
 const RC_PICKDEL = ["","픽딜","고객입고"];
 const STAY_REASONS = ["부품대기","수리 중","진단","수리완료"];
 const CANCEL_REASONS = ["고객사정","일정변경","부품대기","기타"];
@@ -1059,7 +1059,6 @@ function collectInputIssues(){
                       date:doc.date, ref:e.resv_no || e.customer || e.car_no };
       if(!e.customer || !e.car_no || !e.resv_no) issues.push({ ...base, msg:"필수 항목 누락(고객명/차량번호/접수번호)" });
       if(e.checkin_yn !== "O" && e.checkin_yn !== "X") issues.push({ ...base, msg:"입고여부(O/X) 미입력" });
-      if(e.is_reserved !== "O" && e.is_reserved !== "X") issues.push({ ...base, msg:"예약여부(O/X) 미입력" });
       if((e.status === "예약취소" || e.status === "No Show") && !e.cancel_reason) issues.push({ ...base, msg:"취소/노쇼 사유 누락" });
       if(e.rebook === "O" && !e.rebook_dt) issues.push({ ...base, msg:"재예약일자 누락" });
     });
@@ -1735,8 +1734,8 @@ const RC_SVC_LABELS = {
 };
 function analyzeIntake(entries){
   const valid = (entries||[]).filter(e => e.customer || e.car_no || e.resv_no || e.status);
-  const reserved = valid.filter(e => e.is_reserved==="O" && e.status!=="예약취소");
-  const walkin = valid.filter(e => e.is_reserved==="X");
+  const reserved = valid.filter(e => e.status!=="예약취소" && e.status!=="비예약");
+  const walkin = valid.filter(e => e.status==="비예약");
   const checkedIn = reserved.filter(e => e.checkin_yn==="O").length;
   const noshow = reserved.filter(e => e.checkin_yn==="X").length;
   const rebookOk = valid.filter(e => e.rebook==="O").length;
@@ -1965,7 +1964,7 @@ function bindReceptionForm(){
   document.getElementById("rc-date").addEventListener("change", loadRCEntry);
   document.getElementById("rc-add-row").addEventListener("click", ()=>{
     rcEntries.push({ resv_dt:"", checkin_dt:"", resv_no:"", customer:"", car_no:"", vin:"", model:"",
-                      svc_type:"Maintenance", status:"예약접수", is_reserved:"O", pickdel:"", checkin_yn:"", cancel_reason:"",
+                      svc_type:"Maintenance", status:"예약접수", pickdel:"", checkin_yn:"", cancel_reason:"",
                       rebook:"", rebook_dt:"", receiver:"" });
     renderRCEntryTable();
   });
@@ -2006,7 +2005,7 @@ function timeOnly(v){
 function renderRCEntryTable(){
   const body = document.getElementById("rc-entry-body");
   if(rcEntries.length===0){
-    body.innerHTML = '<tr class="empty-row"><td colspan="14">예약 추가 버튼으로 오늘 접수된 예약을 입력하세요</td></tr>';
+    body.innerHTML = '<tr class="empty-row"><td colspan="13">예약 추가 버튼으로 오늘 접수된 예약을 입력하세요</td></tr>';
     updateRCSummary();
     return;
   }
@@ -2020,12 +2019,6 @@ function renderRCEntryTable(){
       <td><input type="text" data-f="model" value="${esc(e.model)}" placeholder="모델"></td>
       <td><select data-f="svc_type">${RC_SERVICE_TYPES.map(t=>`<option value="${t}" ${e.svc_type===t?"selected":""}>${t}</option>`).join("")}</select></td>
       <td><select data-f="status">${RC_STATUS.map(t=>`<option value="${t}" ${e.status===t?"selected":""}>${t}</option>`).join("")}</select></td>
-      <td>
-        <div class="toggle-oxo toggle-reserved">
-          <button type="button" class="on-o ${e.is_reserved==='O'?'active':''}" data-reserved-set="O">O</button>
-          <button type="button" class="on-x ${e.is_reserved==='X'?'active':''}" data-reserved-set="X">X</button>
-        </div>
-      </td>
       <td><select data-f="pickdel">${RC_PICKDEL.map(t=>`<option value="${t}" ${e.pickdel===t?"selected":""}>${t||"-"}</option>`).join("")}</select></td>
       <td>
         <div class="toggle-oxo toggle-checkin">
@@ -2053,13 +2046,6 @@ function renderRCEntryTable(){
       const idx = Number(btn.closest("tr").dataset.idx);
       rcEntries[idx].checkin_yn = (rcEntries[idx].checkin_yn === btn.dataset.set) ? "" : btn.dataset.set;
       if(rcEntries[idx].checkin_yn !== "X") rcEntries[idx].cancel_reason = "";
-      renderRCEntryTable();
-    });
-  });
-  body.querySelectorAll(".toggle-reserved button").forEach(btn=>{
-    btn.addEventListener("click", ()=>{
-      const idx = Number(btn.closest("tr").dataset.idx);
-      rcEntries[idx].is_reserved = (rcEntries[idx].is_reserved === btn.dataset.reservedSet) ? "" : btn.dataset.reservedSet;
       renderRCEntryTable();
     });
   });
@@ -2279,11 +2265,11 @@ function buildBackupCSV(saDocsArr, rcDocsArr){
   });
   lines.push("");
   lines.push("=== 리셉션 일마감 ===");
-  lines.push(["날짜","지점","매니저","예약시간","접수번호","고객명","차량번호","모델","서비스타입","상태","예약여부","픽딜/입고","입고여부","사유/비고","재예약"].map(csvEscape).join(","));
+  lines.push(["날짜","지점","매니저","예약시간","접수번호","고객명","차량번호","모델","서비스타입","상태","픽딜/입고","입고여부","사유/비고","재예약"].map(csvEscape).join(","));
   rcDocsArr.forEach(data=>{
     (data.entries||[]).forEach(e=>{
       lines.push([data.date, branchName(data.branch_slug), data.manager, e.resv_dt, e.resv_no, e.customer, e.car_no,
-                  e.model, e.svc_type, e.status, e.is_reserved, e.pickdel, e.checkin_yn, e.cancel_reason, e.rebook].map(csvEscape).join(","));
+                  e.model, e.svc_type, e.status, e.pickdel, e.checkin_yn, e.cancel_reason, e.rebook].map(csvEscape).join(","));
     });
   });
   return lines.join("\r\n");
