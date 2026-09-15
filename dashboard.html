@@ -368,7 +368,7 @@
         <h2>숙박 차량</h2>
         <span class="hint">출고 여부가 X(미출고)로 남아있는 RO · 상태를 눌러 바꾸면 저장되고, 수리완료 처리하면 목록에서 사라집니다</span>
       </div>
-      <div class="table-wrap" style="margin-top:10px;"><table class="data" id="table-staying"></table></div>
+      <div id="staying-wrap" style="margin-top:10px;display:flex;flex-direction:column;gap:16px;"></div>
     </div>
 
     <div class="card">
@@ -1087,38 +1087,54 @@ function collectStayingVehicles(){
     (doc.entries||[]).forEach(e=>{
       if(e.checkout_yn === "X" && e.ro_no){
         rows.push({
-          docId, ro_no:e.ro_no, checkin_time:e.checkin_time||"", svc_type:e.svc_type||"",
+          docId, ro_no:e.ro_no, svc_type:e.svc_type||"",
           stay_reason:e.stay_reason||"", branch:doc.branch_slug, sa_name:doc.sa_name, date:doc.date,
         });
       }
     });
   }
-  rows.sort((a,b)=> a.date.localeCompare(b.date) || (a.checkin_time||"").localeCompare(b.checkin_time||""));
+  rows.sort((a,b)=> a.date.localeCompare(b.date) || a.ro_no.localeCompare(b.ro_no));
   return rows;
 }
 function renderStayingTable(){
-  const wrap = document.getElementById("table-staying");
+  const wrap = document.getElementById("staying-wrap");
   if(!wrap) return;
   const rows = collectStayingVehicles();
-  const html = `
-    <thead><tr><th>RO 번호</th><th>지점</th><th>담당 SA</th><th>입고일</th><th>입고시간</th><th>서비스 종류</th><th>상태</th></tr></thead>
-    <tbody>
-      ${rows.map(r=>`
-        <tr data-doc="${esc(r.docId)}" data-ro="${esc(r.ro_no)}">
-          <td>${esc(r.ro_no)}</td>
-          <td><span class="pill ${r.branch}">${esc(branchName(r.branch))}</span></td>
-          <td>${esc(r.sa_name)}</td>
-          <td class="num">${esc(r.date)}</td>
-          <td class="num">${esc(r.checkin_time)}</td>
-          <td>${esc(r.svc_type)}</td>
-          <td>
-            <div class="stay-status-group">
-              ${STAY_STATUS_BUTTONS.map(s=>`<button type="button" class="stay-status-btn ${r.stay_reason===s.key?'active':''}" data-status="${esc(s.key)}">${esc(s.label)}</button>`).join("")}
-            </div>
-          </td>
-        </tr>`).join("") || '<tr class="empty-row"><td colspan="7">현재 숙박 중인 차량이 없습니다</td></tr>'}
-    </tbody>`;
-  wrap.innerHTML = html;
+  const byBranch = new Map();
+  roster.branches.forEach(b=> byBranch.set(b.id, []));
+  rows.forEach(r=>{
+    if(!byBranch.has(r.branch)) byBranch.set(r.branch, []);
+    byBranch.get(r.branch).push(r);
+  });
+
+  wrap.innerHTML = roster.branches.map(b=>{
+    const list = byBranch.get(b.id) || [];
+    return `
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span class="pill ${b.id}">${esc(b.name)}</span>
+          <span class="hint">${list.length}대</span>
+        </div>
+        <div class="table-wrap"><table class="data">
+          <thead><tr><th>RO 번호</th><th>담당 SA</th><th>입고일</th><th>서비스 종류</th><th>상태</th></tr></thead>
+          <tbody>
+            ${list.map(r=>`
+              <tr data-doc="${esc(r.docId)}" data-ro="${esc(r.ro_no)}">
+                <td>${esc(r.ro_no)}</td>
+                <td>${esc(r.sa_name)}</td>
+                <td class="num">${esc(r.date)}</td>
+                <td>${esc(r.svc_type)}</td>
+                <td>
+                  <div class="stay-status-group">
+                    ${STAY_STATUS_BUTTONS.map(s=>`<button type="button" class="stay-status-btn ${r.stay_reason===s.key?'active':''}" data-status="${esc(s.key)}">${esc(s.label)}</button>`).join("")}
+                  </div>
+                </td>
+              </tr>`).join("") || '<tr class="empty-row"><td colspan="5">숙박 중인 차량이 없습니다</td></tr>'}
+          </tbody>
+        </table></div>
+      </div>`;
+  }).join("");
+
   wrap.querySelectorAll(".stay-status-btn").forEach(btn=>{
     btn.addEventListener("click", ()=>{
       const tr = btn.closest("tr");
