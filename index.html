@@ -487,7 +487,7 @@
       <div class="table-wrap" style="margin-top:10px;">
         <table class="data entry-table" id="sa-entry-table">
           <thead><tr>
-            <th style="width:34px;">#</th><th>RO 번호</th><th style="width:100px;">입고 시간</th>
+            <th style="width:34px;">#</th><th style="width:140px;">RO 번호</th><th style="width:100px;">입고 시간</th>
             <th style="width:150px;">서비스 종류</th><th style="width:130px;">매출 금액</th>
             <th style="width:90px;">출고</th><th style="width:110px;">숙박 사유</th>
             <th style="width:120px;">재입고 예정일</th><th style="width:110px;">재입고 사유</th>
@@ -1982,6 +1982,12 @@ function currentSABranch(){
 }
 function renderSAEntryTable(){
   const body = document.getElementById("sa-entry-body");
+  saEntries.forEach(e=>{
+    if(e.checkout_yn === "O" && e.loaner_used !== "X"){
+      e.loaner_used = "X";
+      e.loaner_car_no = "";
+    }
+  });
   if(saEntries.length===0){
     body.innerHTML = '<tr class="empty-row"><td colspan="11">RO 추가 버튼으로 오늘 입고된 차량을 입력하세요</td></tr>';
     updateSASummary();
@@ -2095,6 +2101,12 @@ async function saveSAEntry(){
   if(!personId || !date){ showToast("SA와 일자를 선택해 주세요"); return; }
   if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
   const cleaned = saEntries.filter(e=>e.ro_no && e.ro_no.trim());
+  cleaned.forEach(e=>{
+    if(e.checkout_yn === "O" && e.loaner_used !== "X"){
+      e.loaner_used = "X";
+      e.loaner_car_no = "";
+    }
+  });
   if(cleaned.length !== saEntries.length){ saEntries = cleaned; renderSAEntryTable(); }
   const p = roster.sa.find(p=>p.id===personId);
   const id = saDocId(personId, date);
