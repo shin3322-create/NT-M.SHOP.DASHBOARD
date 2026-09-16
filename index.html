@@ -2007,7 +2007,7 @@ function renderSAEntryTable(){
     <tr data-idx="${i}">
       <td class="center muted">${i+1}</td>
       <td><input type="text" data-f="ro_no" value="${esc(e.ro_no)}"></td>
-      <td><input type="time" data-f="checkin_time" value="${esc(e.checkin_time)}"></td>
+      <td><input type="text" data-f="checkin_time" value="${esc(e.checkin_time)}" placeholder="HH:MM"></td>
       <td><select data-f="svc_type">${SA_SERVICE_TYPES.map(t=>`<option value="${t}" ${e.svc_type===t?"selected":""}>${t}</option>`).join("")}</select></td>
       <td><input type="number" data-f="amount" value="${e.amount===""||e.amount===undefined?"":e.amount}" placeholder="0" min="0" step="1000"></td>
       <td>
@@ -2075,11 +2075,40 @@ function renderSAEntryTable(){
   });
   updateSASummary();
 }
+function parseTimeInput(raw){
+  if(raw === undefined || raw === null) return "";
+  const s = String(raw).trim();
+  if(!s) return "";
+  let m = s.match(/^(\d{1,2})[:.](\d{2})(?:[:.]\d{2})?\s*(AM|PM|am|pm|오전|오후)?$/);
+  if(m){
+    let h = parseInt(m[1],10);
+    const mm = m[2];
+    const suffix = (m[3]||"").toUpperCase();
+    if(suffix === "PM" || suffix === "오후"){ if(h < 12) h += 12; }
+    else if(suffix === "AM" || suffix === "오전"){ if(h === 12) h = 0; }
+    if(h>=0 && h<=23) return String(h).padStart(2,"0") + ":" + mm;
+    return s;
+  }
+  m = s.match(/^(\d{1,2})(\d{2})$/);
+  if(m){
+    const h = parseInt(m[1],10);
+    if(h>=0 && h<=23) return String(h).padStart(2,"0") + ":" + m[2];
+  }
+  return s; // 아직 완성되지 않은 입력이거나 인식할 수 없는 형식이면 입력한 그대로 둠(데이터 손실 방지)
+}
 function onSAFieldChange(ev){
   const tr = ev.target.closest("tr");
   const idx = Number(tr.dataset.idx);
   const field = ev.target.dataset.f;
-  saEntries[idx][field] = ev.target.value;
+  let value = ev.target.value;
+  if(field === "checkin_time"){
+    const normalized = parseTimeInput(value);
+    if(normalized !== value){
+      value = normalized;
+      ev.target.value = normalized;
+    }
+  }
+  saEntries[idx][field] = value;
   if(field === "return_date"){
     if(!ev.target.value) saEntries[idx].return_reason = "";
     renderSAEntryTable();
