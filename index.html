@@ -154,7 +154,7 @@
   .branch-card{ display:flex; flex-direction:column; gap:12px; border-top:3px solid var(--branch-color,var(--accent)); }
   .branch-card .b-name{ font-size:15px; font-weight:900; display:flex; align-items:center; gap:8px; }
   .branch-card .b-name .dot{ width:9px;height:9px;border-radius:50%; background:var(--branch-color); }
-  .branch-card .b-figures{ display:flex; justify-content:space-between; gap:10px; }
+  .branch-card .b-figures{ display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; }
   .branch-card .fig{ display:flex; flex-direction:column; gap:2px; }
   .branch-card .fig .label{ font-size:11px; color:var(--text-muted); font-weight:700; }
   .branch-card .fig .value{ font-size:19px; font-weight:900; letter-spacing:-.01em; }
@@ -635,9 +635,9 @@
 <div class="toast" id="toast"></div>
 <div class="chart-tooltip" id="chart-tooltip"></div>
 <datalist id="cancel-reason-list">
-  <option value="고객사정"></option>
-  <option value="일정변경"></option>
-  <option value="부품대기"></option>
+  <option value="고객 변심"></option>
+  <option value="차량판매"></option>
+  <option value="재예약"></option>
   <option value="기타"></option>
 </datalist>
 
@@ -677,7 +677,7 @@ const RC_SERVICE_TYPES = ["Maintenance","Recall/TC","경수리","중수리","진
 const RC_STATUS = ["예약접수","차량접수","예약취소","No Show","비예약"];
 const RC_PICKDEL = ["","픽딜","고객입고"];
 const STAY_REASONS = ["부품대기","수리 중","진단","수리완료"];
-const CANCEL_REASONS = ["고객사정","일정변경","부품대기","기타"];
+const CANCEL_REASONS = ["고객 변심","차량판매","재예약","기타"];
 const REOPEN_REASONS = ["부품대기","재 점검","재수리","기타"];
 
 /* ---------------------------------------------------------------- */
@@ -1093,7 +1093,6 @@ function collectInputIssues(){
       if(!e.checkin_time) issues.push({ ...base, msg:"입고시간 누락" });
       if(e.checkout_yn !== "O" && e.checkout_yn !== "X") issues.push({ ...base, msg:"출고여부(O/X) 미입력" });
       if(e.loaner_used !== "O" && e.loaner_used !== "X") issues.push({ ...base, msg:"로너카(O/X) 미입력" });
-      if(!(Number(e.amount) > 0)) issues.push({ ...base, msg:"매출금액 미입력(0원)" });
       if(e.checkout_yn === "X" && !e.stay_reason) issues.push({ ...base, msg:"숙박 사유 누락" });
       if(e.return_date && !e.return_reason) issues.push({ ...base, msg:"재입고 사유 누락" });
     });
@@ -1388,7 +1387,9 @@ function renderLoanerSummary(){
 function renderBranchCards(today){
   const wrap = document.getElementById("branch-cards");
   wrap.innerHTML = roster.branches.map(b=>{
+    const yesterday = addDaysStr(today, -1);
     const todaySA = aggregateSA(b.id, null, d => d===today);
+    const yesterdaySA = aggregateSA(b.id, null, d => d===yesterday);
     const mtdSA = aggregateSA(b.id, null, () => true);
     const todayRC = aggregateReception(b.id, d => d===today);
     const mtdRC = aggregateReception(b.id, () => true);
@@ -1407,6 +1408,7 @@ function renderBranchCards(today){
         </div>
         <div class="b-figures">
           <div class="fig"><span class="label">오늘 매출</span><span class="value today num">${fmtManwon(todaySA.total_sales)}만</span></div>
+          <div class="fig"><span class="label">어제 매출</span><span class="value num">${fmtManwon(yesterdaySA.total_sales)}만</span></div>
           <div class="fig"><span class="label">이달 누계</span><span class="value num">${fmtManwon(mtdSA.total_sales)}만</span></div>
           <div class="fig"><span class="label">오늘 RO</span><span class="value num">${todaySA.ro_count}건</span></div>
         </div>
@@ -1987,7 +1989,7 @@ function renderSAEntryTable(){
   body.innerHTML = saEntries.map((e,i)=>`
     <tr data-idx="${i}">
       <td class="center muted">${i+1}</td>
-      <td><input type="text" data-f="ro_no" value="${esc(e.ro_no)}" placeholder="RO2609000000"></td>
+      <td><input type="text" data-f="ro_no" value="${esc(e.ro_no)}"></td>
       <td><input type="time" data-f="checkin_time" value="${esc(e.checkin_time)}"></td>
       <td><select data-f="svc_type">${SA_SERVICE_TYPES.map(t=>`<option value="${t}" ${e.svc_type===t?"selected":""}>${t}</option>`).join("")}</select></td>
       <td><input type="number" data-f="amount" value="${e.amount===""||e.amount===undefined?"":e.amount}" placeholder="0" min="0" step="1000"></td>
