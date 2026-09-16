@@ -1084,9 +1084,11 @@ function countUnshippedSA(branchId, filterFn){
   return count;
 }
 
+const ISSUES_CUTOFF_DATE = "2026-09-11"; // 이 날짜 이전 자료는 "입력 수정 필요" 목록에서 제외
 function collectInputIssues(){
   const issues = [];
   for(const doc of saDocs.values()){
+    if(doc.date < ISSUES_CUTOFF_DATE) continue;
     (doc.entries||[]).forEach(e=>{
       if(!e.ro_no) return;
       const base = { kind:"sa", branch:doc.branch_slug, person:doc.sa_name, personId:doc.sa_id, date:doc.date, ref:e.ro_no };
@@ -1098,6 +1100,7 @@ function collectInputIssues(){
     });
   }
   for(const doc of receptionDocs.values()){
+    if(doc.date < ISSUES_CUTOFF_DATE) continue;
     (doc.entries||[]).forEach(e=>{
       if(!(e.customer || e.car_no || e.resv_no)) return;
       const base = { kind:"reception", branch:doc.branch_slug, person:doc.manager, personId:doc.manager_id,
