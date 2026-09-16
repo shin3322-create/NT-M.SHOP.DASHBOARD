@@ -2044,6 +2044,10 @@ function renderSAEntryTable(){
       const idx = Number(btn.closest("tr").dataset.idx);
       saEntries[idx].checkout_yn = (saEntries[idx].checkout_yn === btn.dataset.set) ? "" : btn.dataset.set;
       if(saEntries[idx].checkout_yn !== "X") saEntries[idx].stay_reason = "";
+      if(saEntries[idx].checkout_yn === "O"){
+        saEntries[idx].loaner_used = "X";
+        saEntries[idx].loaner_car_no = "";
+      }
       renderSAEntryTable();
     });
   });
