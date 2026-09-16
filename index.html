@@ -192,6 +192,7 @@
   table.data td{ padding:9px 10px; font-size:13px; border-bottom:1px solid var(--border); color:var(--text-primary); }
   table.data tr:last-child td{ border-bottom:none; }
   table.data tr:hover td{ background:var(--surface-2); }
+  table.data tr.week-row-current td{ background:var(--accent-bg,rgba(37,99,235,0.08)); font-weight:600; }
   .right{ text-align:right; }
   .center{ text-align:center; }
   .pill{ display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:999px; font-size:11.5px; font-weight:700; }
@@ -337,7 +338,12 @@
       <button data-view="settings" id="nav-settings">설정</button>
     </nav>
     <div class="clock">
-      <strong id="clock-date">-</strong>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <strong id="clock-date" style="cursor:pointer;" title="클릭해서 다른 날짜의 매출 보기">-</strong>
+        <button type="button" class="btn ghost sm" id="dash-date-pick-btn" title="다른 날짜의 매출 보기" style="padding:2px 7px;">📅</button>
+        <input type="date" id="dash-date-input" style="display:none;">
+        <button type="button" class="btn ghost sm" id="dash-date-reset-btn" style="display:none;padding:2px 7px;">오늘</button>
+      </div>
       <span id="clock-status">연결 중…<span id="identity-label"></span></span>
       <button class="btn ghost sm" id="logout-btn" style="margin-top:6px;">로그아웃</button>
     </div>
@@ -445,6 +451,37 @@
         </div>
       </div>
     </div>
+    <div class="card" style="margin-top:16px;">
+      <div class="section-head">
+        <h2>주간 자료 업로드</h2>
+        <span class="hint">업로드하는 시점이 속한 주(월~일)에 자동 반영됩니다</span>
+      </div>
+      <div class="field-row" style="margin-top:12px;flex-wrap:wrap;">
+        <div class="field">
+          <label for="upload-openro-input">OPEN RO Clearance Report (전 지점, .xlsx)</label>
+          <input type="file" id="upload-openro-input" accept=".xlsx,.xls">
+        </div>
+        <div class="field">
+          <label for="upload-advance-input">선수금 리스트 (전 지점, .xlsx)</label>
+          <input type="file" id="upload-advance-input" accept=".xlsx,.xls">
+        </div>
+      </div>
+      <div class="field-row" style="margin-top:12px;flex-wrap:wrap;">
+        <div class="field">
+          <label for="upload-pr-gunsan-input">PR 리스트 - 군산 (.xlsb/.xlsx)</label>
+          <input type="file" id="upload-pr-gunsan-input" accept=".xlsb,.xlsx,.xls">
+        </div>
+        <div class="field">
+          <label for="upload-pr-mokpo-input">PR 리스트 - 목포 (.xlsb/.xlsx)</label>
+          <input type="file" id="upload-pr-mokpo-input" accept=".xlsb,.xlsx,.xls">
+        </div>
+        <div class="field">
+          <label for="upload-pr-seosan-input">PR 리스트 - 서산 (.xlsb/.xlsx)</label>
+          <input type="file" id="upload-pr-seosan-input" accept=".xlsb,.xlsx,.xls">
+        </div>
+      </div>
+      <div class="hint" id="week-upload-status" style="margin-top:8px;"></div>
+    </div>
     <div id="week-branches" style="display:flex;flex-direction:column;gap:16px;"></div>
   </section>
 
@@ -490,7 +527,7 @@
             <th style="width:34px;">#</th><th style="width:140px;">RO 번호</th><th style="width:100px;">입고 시간</th>
             <th style="width:150px;">서비스 종류</th><th style="width:130px;">매출 금액</th>
             <th style="width:90px;">출고</th><th style="width:110px;">숙박 사유</th>
-            <th style="width:120px;">재입고 예정일</th><th style="width:110px;">재입고 사유</th>
+            <th style="width:130px;">재입고(고객연락) 일자</th><th style="width:120px;">재입고 연락사유</th>
             <th style="width:120px;">로너카</th><th style="width:36px;"></th>
           </tr></thead>
           <tbody id="sa-entry-body"></tbody>
@@ -686,7 +723,7 @@ const RC_STATUS = ["예약접수","차량접수","예약취소","No Show","비�
 const RC_PICKDEL = ["","픽딜","고객입고"];
 const STAY_REASONS = ["부품대기","수리 중","진단","수리완료"];
 const CANCEL_REASONS = ["고객 변심","차량판매","재예약","기타"];
-const REOPEN_REASONS = ["부품대기","재 점검","재수리","기타"];
+const REOPEN_REASONS = ["부품대기","재 점검","재수리","고객 약속","기타"];
 
 /* ---------------------------------------------------------------- */
 /* state                                                              */
@@ -697,8 +734,10 @@ let targets = { ...DEFAULT_TARGETS };
 let receptionDocs = new Map();   // id -> data   (current month)
 let saDocs = new Map();          // id -> data   (current month)
 let loanerDocs = new Map();      // id -> data   (all loaner cars, all branches)
+let weekMetricsDocs = new Map(); // id -> data   (OPEN RO / PR리스트 / 선수금리스트 업로드 수치, all weeks/branches)
 let unsubs = [];
 let currentView = "dashboard";
+let dashboardViewDate = null; // null = 오늘 기준, 값이 있으면 그 날짜의 매출만 대시보드 카드에 표시
 let supabaseClient = null;
 let myProfile = null;     // row from `profiles` table for the signed-in user
 let myIdentity = null;    // { role: 'admin'|'sa'|'reception'|'viewer', personId: string|null }
@@ -898,6 +937,7 @@ async function init(){
   });
 
   bindNav();
+  bindDashboardDatePicker();
   bindWeekView();
   bindSAForm();
   bindReceptionForm();
@@ -909,6 +949,7 @@ async function init(){
   subscribeConfig();
   subscribeMonthData(todayKST());
   subscribeLoaner();
+  subscribeWeekMetrics();
   renderAll();
   applyIdentityRestrictions();
 }
@@ -984,6 +1025,15 @@ function subscribeLoaner(){
     }, err=>console.warn("loaner snapshot error", err));
   }catch(err){ console.warn(err); }
 }
+function subscribeWeekMetrics(){
+  try{
+    db.collection("week_metrics").onSnapshot(snap=>{
+      weekMetricsDocs.clear();
+      snap.docs.forEach(d=>weekMetricsDocs.set(d.id, d.data()));
+      if(currentView === "week") renderWeekClose();
+    }, err=>console.warn("week_metrics snapshot error", err));
+  }catch(err){ console.warn(err); }
+}
 
 /* ---------------------------------------------------------------- */
 /* nav                                                                */
@@ -993,6 +1043,31 @@ function bindNav(){
     const btn = e.target.closest("button[data-view]");
     if(!btn) return;
     switchView(btn.dataset.view);
+  });
+}
+function bindDashboardDatePicker(){
+  const label = document.getElementById("clock-date");
+  const btn = document.getElementById("dash-date-pick-btn");
+  const input = document.getElementById("dash-date-input");
+  const resetBtn = document.getElementById("dash-date-reset-btn");
+  if(!btn || !input) return;
+  const openPicker = ()=>{
+    input.value = dashboardViewDate || todayKST();
+    input.style.display = "inline-block";
+    input.focus();
+    if(input.showPicker){ try{ input.showPicker(); }catch(e){} }
+  };
+  btn.addEventListener("click", openPicker);
+  if(label) label.addEventListener("click", openPicker);
+  input.addEventListener("change", ()=>{
+    dashboardViewDate = input.value || null;
+    input.style.display = "none";
+    if(currentView==="dashboard") renderDashboard();
+  });
+  input.addEventListener("blur", ()=>{ input.style.display = "none"; });
+  resetBtn.addEventListener("click", ()=>{
+    dashboardViewDate = null;
+    if(currentView==="dashboard") renderDashboard();
   });
 }
 function switchView(view){
@@ -1092,7 +1167,7 @@ function countUnshippedSA(branchId, filterFn){
   return count;
 }
 
-const ISSUES_CUTOFF_DATE = "2026-09-11"; // 이 날짜 이전 자료는 "입력 수정 필요" 목록에서 제외
+const ISSUES_CUTOFF_DATE = "2026-09-13"; // 이 날짜 이전 자료는 "입력 수정 필요" 목록에서 제외
 function collectInputIssues(){
   const issues = [];
   for(const doc of saDocs.values()){
@@ -1104,7 +1179,7 @@ function collectInputIssues(){
       if(e.checkout_yn !== "O" && e.checkout_yn !== "X") issues.push({ ...base, msg:"출고여부(O/X) 미입력" });
       if(e.loaner_used !== "O" && e.loaner_used !== "X") issues.push({ ...base, msg:"로너카(O/X) 미입력" });
       if(e.checkout_yn === "X" && !e.stay_reason) issues.push({ ...base, msg:"숙박 사유 누락" });
-      if(e.return_date && !e.return_reason) issues.push({ ...base, msg:"재입고 사유 누락" });
+      if(e.return_date && !e.return_reason) issues.push({ ...base, msg:"재입고 연락사유 누락" });
     });
   }
   for(const doc of receptionDocs.values()){
@@ -1155,7 +1230,9 @@ function renderInputIssues(){
 
 function renderDashboard(){
   const today = todayKST();
-  renderBranchCards(today);
+  renderBranchCards(dashboardViewDate || today, today);
+  const resetBtn = document.getElementById("dash-date-reset-btn");
+  if(resetBtn) resetBtn.style.display = (dashboardViewDate && dashboardViewDate !== today) ? "inline-block" : "none";
   renderBranchIntakeOverview(today);
   renderTracker(today);
   renderInputIssues();
@@ -1190,7 +1267,7 @@ function collectReturnVehicles(){
 function renderReturnTable(today){
   const rows = collectReturnVehicles();
   const html = `
-    <thead><tr><th>RO 번호</th><th>지점</th><th>담당 SA</th><th>재입고 예정일</th><th>사유</th><th>상태</th></tr></thead>
+    <thead><tr><th>RO 번호</th><th>지점</th><th>담당 SA</th><th>재입고(고객연락) 일자</th><th>연락사유</th><th>상태</th></tr></thead>
     <tbody>
       ${rows.map(r=>{
         let dateStyle;
@@ -1395,19 +1472,20 @@ function renderLoanerSummary(){
   wrap.innerHTML = html;
 }
 
-function renderBranchCards(today){
+function renderBranchCards(viewDate, realToday){
   const wrap = document.getElementById("branch-cards");
+  const isToday = viewDate === realToday;
+  const dateLabel = isToday ? "오늘" : `${Number(viewDate.slice(5,7))}월${Number(viewDate.slice(8,10))}일`;
   wrap.innerHTML = roster.branches.map(b=>{
-    const yesterday = addDaysStr(today, -1);
-    const todaySA = aggregateSA(b.id, null, d => d===today);
-    const yesterdaySA = aggregateSA(b.id, null, d => d===yesterday);
+    const prevDay = addDaysStr(viewDate, -1);
+    const focusSA = aggregateSA(b.id, null, d => d===viewDate);
+    const prevDaySA = aggregateSA(b.id, null, d => d===prevDay);
     const mtdSA = aggregateSA(b.id, null, () => true);
-    const todayRC = aggregateReception(b.id, d => d===today);
     const mtdRC = aggregateReception(b.id, () => true);
     const target = targets[b.id] || 0;
     const pct = target ? Math.min(1, mtdSA.total_sales/target) : 0;
     const hex = branchHex(b.id);
-    const todayUnshipped = countUnshippedSA(b.id, d => d===today);
+    const focusUnshipped = countUnshippedSA(b.id, d => d===viewDate);
     const accumulatedUnshipped = countUnshippedSA(b.id, () => true);
     return `
       <div class="card branch-card" style="--branch-color:${hex};">
@@ -1418,19 +1496,20 @@ function renderBranchCards(today){
           <div class="target-row"><span class="num">${fmtManwon(mtdSA.total_sales)}만원</span><span class="num muted">/ ${fmtManwon(target)}만원</span></div>
         </div>
         <div class="b-figures">
-          <div class="fig"><span class="label">오늘 매출</span><span class="value today num">${fmtManwon(todaySA.total_sales)}만</span></div>
-          <div class="fig"><span class="label">어제 매출</span><span class="value num">${fmtManwon(yesterdaySA.total_sales)}만</span></div>
+          <div class="fig"><span class="label">${dateLabel} 매출</span><span class="value today num">${fmtManwon(focusSA.total_sales)}만</span></div>
+          <div class="fig"><span class="label">전일 매출</span><span class="value num">${fmtManwon(prevDaySA.total_sales)}만</span></div>
           <div class="fig"><span class="label">이달 누계</span><span class="value num">${fmtManwon(mtdSA.total_sales)}만</span></div>
-          <div class="fig"><span class="label">오늘 RO</span><span class="value num">${todaySA.ro_count}건</span></div>
+          <div class="fig"><span class="label">${dateLabel} RO</span><span class="value num">${focusSA.ro_count}건</span></div>
         </div>
         <div class="mini-stats">
           <span>예약 <b class="num">${mtdRC.resv_count}</b></span>
           <span>입고 <b class="num">${mtdRC.checkin_count}</b></span>
           <span>노쇼 <b class="num">${mtdRC.noshow_count}</b></span>
           <span>픽딜 <b class="num">${mtdRC.pickdel_count}</b></span>
+          <span>재예약 누적 <b class="num">${mtdRC.rebook_o}</b></span>
         </div>
         <div class="mini-stats">
-          <span>당일 미출고 <b class="num" style="${todayUnshipped>0?'color:var(--critical);':''}">${todayUnshipped}</b></span>
+          <span>${dateLabel} 미출고 <b class="num" style="${focusUnshipped>0?'color:var(--critical);':''}">${focusUnshipped}</b></span>
           <span>누적 미출고 <b class="num" style="${accumulatedUnshipped>0?'color:var(--warning);':''}">${accumulatedUnshipped}</b></span>
         </div>
       </div>`;
@@ -1866,6 +1945,35 @@ function bindWeekView(){
     input.value = weekAnchorDate;
     renderWeekClose();
   });
+  const openroInput = document.getElementById("upload-openro-input");
+  if(openroInput) openroInput.addEventListener("change", (e)=>{ handleOpenRoUpload(e.target.files[0]); e.target.value=""; });
+  const advInput = document.getElementById("upload-advance-input");
+  if(advInput) advInput.addEventListener("change", (e)=>{ handleAdvanceUpload(e.target.files[0]); e.target.value=""; });
+  ["gunsan","mokpo","seosan"].forEach(bid=>{
+    const el = document.getElementById("upload-pr-"+bid+"-input");
+    if(el) el.addEventListener("change", (e)=>{ handlePrListUpload(e.target.files[0], bid); e.target.value=""; });
+  });
+}
+
+/* ---- 주마감 표 구성: 그 달에 속한 월~일 주차들을 순서대로 계산 ---- */
+function weeksOfMonth(anchorDateStr){
+  const {ym, start:monthStart, end:monthEnd} = monthRangeOf(anchorDateStr);
+  const weeks = [];
+  const seen = new Set();
+  let d = monthStart;
+  while(d <= monthEnd){
+    const w = weekRangeOf(d);
+    if(w.start.slice(0,7) === ym && !seen.has(w.start)){
+      seen.add(w.start);
+      weeks.push(w);
+    }
+    d = addDaysStr(d, 1);
+  }
+  weeks.sort((a,b)=>a.start.localeCompare(b.start));
+  return weeks;
+}
+function weekMetricsFor(branchId, weekStart){
+  return weekMetricsDocs.get(branchId+"_"+weekStart) || {};
 }
 function renderWeekClose(){
   const wrap = document.getElementById("week-branches");
@@ -1873,50 +1981,243 @@ function renderWeekClose(){
   if(!weekAnchorDate) weekAnchorDate = todayKST();
   const input = document.getElementById("week-anchor-date");
   if(input && !input.value) input.value = weekAnchorDate;
-  const week = weekRangeOf(weekAnchorDate);
+  const thisWeek = weekRangeOf(weekAnchorDate);
+  const {ym, start:monthStart} = monthRangeOf(weekAnchorDate);
   const hint = document.getElementById("week-range-hint");
-  if(hint) hint.textContent = `${week.start} ~ ${week.end} (월~일) 기준`;
-  const filterFn = d => d>=week.start && d<=week.end;
+  if(hint) hint.textContent = `${ym} · 화면 기준 주: ${thisWeek.start} ~ ${thisWeek.end} (월~일)`;
+  const weeks = weeksOfMonth(weekAnchorDate);
+  const today = todayKST();
 
   wrap.innerHTML = roster.branches.map(b=>{
-    const sa = aggregateSA(b.id, null, filterFn);
-    const rc = aggregateReception(b.id, filterFn);
-    let mergedEntries = [];
-    for(const doc of receptionDocs.values()){
-      if(doc.branch_slug !== b.id) continue;
-      if(!filterFn(doc.date)) continue;
-      mergedEntries = mergedEntries.concat(doc.entries||[]);
-    }
-    const intake = analyzeIntake(mergedEntries);
+    const target = targets[b.id] || DEFAULT_TARGETS[b.id] || 0;
+    const rows = weeks.map((w, idx)=>{
+      const filterFn = d => d>=w.start && d<=w.end;
+      const sa = aggregateSA(b.id, null, filterFn);
+      let mergedEntries = [];
+      for(const doc of receptionDocs.values()){
+        if(doc.branch_slug !== b.id) continue;
+        if(!filterFn(doc.date)) continue;
+        mergedEntries = mergedEntries.concat(doc.entries||[]);
+      }
+      const intake = analyzeIntake(mergedEntries);
+
+      // 누계 매출: 이 달 1일 ~ (이 주의 일요일과 오늘 중 이른 날짜)
+      const cumEnd = w.end < today ? w.end : today;
+      const cumSA = (cumEnd >= monthStart) ? aggregateSA(b.id, null, d => d>=monthStart && d<=cumEnd) : { total_sales:0 };
+      const achieveRate = target>0 ? cumSA.total_sales/target : 0;
+
+      // 전주 대비 예약율 (전주 데이터가 현재 캐시된 월 범위 밖이면 "-")
+      const prevWeek = weekRangeOf(addDaysStr(w.start, -7));
+      let prevReserved = null;
+      if(currentMonthKey && (prevWeek.start.slice(0,7) === currentMonthKey || prevWeek.end.slice(0,7) === currentMonthKey)){
+        let prevEntries = [];
+        for(const doc of receptionDocs.values()){
+          if(doc.branch_slug !== b.id) continue;
+          if(doc.date < prevWeek.start || doc.date > prevWeek.end) continue;
+          prevEntries = prevEntries.concat(doc.entries||[]);
+        }
+        prevReserved = analyzeIntake(prevEntries).reserved_count;
+      }
+      const wowRate = (prevReserved!==null && prevReserved>0) ? (intake.reserved_count-prevReserved)/prevReserved : null;
+      const noshowRate = intake.noshow_count>0 ? intake.rebook_ok/intake.noshow_count : null;
+
+      const wm = weekMetricsFor(b.id, w.start);
+      const isCurrentWeek = (w.start === thisWeek.start);
+      return `
+        <tr class="${isCurrentWeek?'week-row-current':''}">
+          <td>${idx+1}주</td>
+          <td class="hint">${w.start.slice(5)}~${w.end.slice(5)}</td>
+          <td class="right num">${fmtManwon(sa.retail)}</td>
+          <td class="right num">${fmtManwon(sa.bsi)}</td>
+          <td class="right num">${fmtManwon(sa.warranty)}</td>
+          <td class="right num">${fmtManwon(sa.insurance)}</td>
+          <td class="right num">${fmtManwon(cumSA.total_sales)}</td>
+          <td class="right num">${fmtManwon(target)}</td>
+          <td class="right num">${fmtPct(achieveRate)}</td>
+          <td class="right num">${intake.reserved_count}</td>
+          <td class="right num">${intake.checkin_count}</td>
+          <td class="right num">${intake.walkin_count}</td>
+          <td class="right num">${intake.noshow_count}</td>
+          <td class="right num">${intake.rebook_ok}</td>
+          <td class="right num">${noshowRate===null?"-":fmtPct(noshowRate)}</td>
+          <td class="right num">${wowRate===null?"-":(wowRate>=0?"+":"")+fmtPct(wowRate)}</td>
+          <td class="right num">${wm.open_ro ?? "-"}</td>
+          <td class="right num">${wm.pr_list ?? "-"}</td>
+          <td class="right num">${wm.advance_amt!=null ? fmtManwon(wm.advance_amt) : "-"}</td>
+        </tr>`;
+    }).join("");
+
     return `
       <div class="card">
-        <div class="section-head"><h2>${esc(b.name)} 지점</h2><span class="hint">${week.start} ~ ${week.end}</span></div>
-        <div class="summary-panel" style="margin-top:10px;">
-          <div class="item"><span class="k">주간 매출 합계</span><span class="v total num">${fmtManwon(sa.total_sales)}만</span></div>
-          <div class="item"><span class="k">RETAIL</span><span class="v num">${fmtManwon(sa.retail)}만</span></div>
-          <div class="item"><span class="k">BSI</span><span class="v num">${fmtManwon(sa.bsi)}만</span></div>
-          <div class="item"><span class="k">W 보증</span><span class="v num">${fmtManwon(sa.warranty)}만</span></div>
-          <div class="item"><span class="k">RECALL</span><span class="v num">${fmtManwon(sa.recall)}만</span></div>
-          <div class="item"><span class="k">보험</span><span class="v num">${fmtManwon(sa.insurance)}만</span></div>
-          <div class="item"><span class="k">내부처리</span><span class="v num">${fmtManwon(sa.internal)}만</span></div>
-          <div class="item"><span class="k">RO 건수</span><span class="v num">${sa.ro_count}건</span></div>
-          <div class="item"><span class="k">출고완료 / 미출고</span><span class="v num">${sa.checkout_o} / ${sa.checkout_x}</span></div>
-          <div class="item"><span class="k">로너카 사용</span><span class="v num">${sa.loaner_count}건</span></div>
-        </div>
-        <div class="summary-panel" style="margin-top:10px;">
-          <div class="item"><span class="k">예약접수</span><span class="v num">${rc.resv_count}</span></div>
-          <div class="item"><span class="k">예약취소</span><span class="v num">${rc.cancel_count}</span></div>
-          <div class="item"><span class="k">입고</span><span class="v num">${rc.checkin_count}</span></div>
-          <div class="item"><span class="k">노쇼</span><span class="v num">${rc.noshow_count}</span></div>
-          <div class="item"><span class="k">픽딜</span><span class="v num">${rc.pickdel_count}</span></div>
-          <div class="item"><span class="k">고객직접입고</span><span class="v num">${rc.customer_visit_count}</span></div>
-          <div class="item"><span class="k">재예약 O/X</span><span class="v num">${rc.rebook_o} / ${rc.rebook_x}</span></div>
-        </div>
-        <div style="margin-top:10px;">
-          ${intakeStatsBlockHTML("입고 유형 분석 (주간 누계)", intake)}
-        </div>
+        <div class="section-head"><h2>${esc(b.name)} 지점 · 주간보고</h2><span class="hint">매출 단위: 만원 · 누계매출=이번 달 1일~해당 주(오늘까지)</span></div>
+        <div class="table-wrap" style="margin-top:10px;"><table class="data">
+          <thead><tr>
+            <th>주</th><th>기간</th><th>RETAIL</th><th>BSI</th><th>WARRANTY</th><th>Insurance</th>
+            <th>누계매출</th><th>타겟</th><th>달성율</th>
+            <th>예약</th><th>입고</th><th>비예약</th><th>노쇼</th><th>재예약성공</th><th>노쇼이행율</th><th>전주대비예약율</th>
+            <th>OPEN RO</th><th>PR리스트</th><th>선수금리스트</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>
       </div>`;
   }).join("");
+}
+
+/* ---- 주마감 업로드: OPEN RO Clearance Report / PR 리스트 / 선수금 리스트 ---- */
+const WEEK_UPLOAD_BRANCH_SHEETS = { gunsan:"군산", mokpo:"목포", seosan:"서산" };
+function readWorkbookFile(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = (e)=>{
+      try{
+        const data = new Uint8Array(e.target.result);
+        resolve(XLSX.read(data, {type:"array"}));
+      }catch(err){ reject(err); }
+    };
+    reader.onerror = ()=>reject(reader.error);
+    reader.readAsArrayBuffer(file);
+  });
+}
+function findHeaderRowIdx(rows, mustInclude){
+  for(let i=0;i<rows.length;i++){
+    const r = rows[i];
+    if(r && r.some(c=>String(c==null?"":c).includes(mustInclude))) return i;
+  }
+  return -1;
+}
+function countOpenRoRows(rows){
+  const headerIdx = findHeaderRowIdx(rows, "경과일");
+  if(headerIdx===-1) return null;
+  const header = rows[headerIdx].map(c=>String(c==null?"":c).trim());
+  const colElapsed = header.findIndex(h=>h.includes("경과일") && !h.includes("가정산"));
+  const colStatus = header.findIndex(h=>h.includes("RO상태"));
+  if(colElapsed===-1 || colStatus===-1) return null;
+  let count = 0;
+  for(let i=headerIdx+1;i<rows.length;i++){
+    const r = rows[i];
+    if(!r) continue;
+    const elapsed = r[colElapsed];
+    const status = r[colStatus];
+    if(typeof elapsed === "number" && elapsed <= -5 && status !== "가정산 완료") count++;
+  }
+  return count;
+}
+function countPrListRows(rows){
+  const headerIdx = findHeaderRowIdx(rows, "참조문서번호");
+  if(headerIdx===-1) return null;
+  const header = rows[headerIdx].map(c=>String(c==null?"":c).trim());
+  const colDoc = header.findIndex(h=>h.includes("참조문서번호"));
+  const colElapsed = header.findIndex(h=>h.includes("경과일자"));
+  if(colDoc===-1 || colElapsed===-1) return null;
+  let count = 0;
+  for(let i=headerIdx+1;i<rows.length;i++){
+    const r = rows[i];
+    if(!r) continue;
+    const doc = r[colDoc];
+    const elapsed = r[colElapsed];
+    if(doc && typeof elapsed === "number" && elapsed > 5) count++;
+  }
+  return count;
+}
+function sumAdvanceRows(rows){
+  const headerIdx = findHeaderRowIdx(rows, "미결잔액");
+  if(headerIdx===-1) return null;
+  const header = rows[headerIdx].map(c=>String(c==null?"":c).trim());
+  const colBal = header.findIndex(h=>h.includes("미결잔액"));
+  const colSeq = header.findIndex(h=>h.includes("순번"));
+  if(colBal===-1) return null;
+  let sum = 0;
+  for(let i=headerIdx+1;i<rows.length;i++){
+    const r = rows[i];
+    if(!r) continue;
+    if(colSeq>=0 && (r[colSeq]===null || r[colSeq]===undefined || r[colSeq]==="")) continue;
+    const v = r[colBal];
+    if(typeof v === "number") sum += v;
+  }
+  return sum;
+}
+async function saveWeekMetric(branchId, weekStart, field, value){
+  const id = branchId+"_"+weekStart;
+  const existing = weekMetricsDocs.get(id) || {};
+  const payload = { branch_slug: branchId, week_start: weekStart, [field]: value };
+  await db.doc("week_metrics/"+id).set(payload);
+  weekMetricsDocs.set(id, { ...existing, ...payload });
+}
+async function handleOpenRoUpload(file){
+  if(!file) return;
+  const statusEl = document.getElementById("week-upload-status");
+  try{
+    if(statusEl) statusEl.textContent = "OPEN RO 리포트 분석 중…";
+    const wb = await readWorkbookFile(file);
+    const weekStart = weekRangeOf(todayKST()).start;
+    const results = [];
+    for(const [branchId, sheetName] of Object.entries(WEEK_UPLOAD_BRANCH_SHEETS)){
+      const ws = wb.Sheets[sheetName];
+      if(!ws) continue;
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:true});
+      const count = countOpenRoRows(rows);
+      if(count !== null){
+        await saveWeekMetric(branchId, weekStart, "open_ro", count);
+        results.push(`${branchName(branchId)} ${count}건`);
+      }
+    }
+    renderWeekClose();
+    if(statusEl) statusEl.textContent = "";
+    showToast(results.length ? `OPEN RO 반영: ${results.join(", ")}` : "지점 시트(군산/목포/서산)를 찾지 못했습니다");
+  }catch(err){
+    console.error(err);
+    if(statusEl) statusEl.textContent = "";
+    showToast("OPEN RO 리포트 처리 중 오류가 발생했습니다");
+  }
+}
+async function handleAdvanceUpload(file){
+  if(!file) return;
+  const statusEl = document.getElementById("week-upload-status");
+  try{
+    if(statusEl) statusEl.textContent = "선수금 리스트 분석 중…";
+    const wb = await readWorkbookFile(file);
+    const weekStart = weekRangeOf(todayKST()).start;
+    const results = [];
+    for(const [branchId, sheetName] of Object.entries(WEEK_UPLOAD_BRANCH_SHEETS)){
+      const ws = wb.Sheets[sheetName];
+      if(!ws) continue;
+      const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:true});
+      const sum = sumAdvanceRows(rows);
+      if(sum !== null){
+        await saveWeekMetric(branchId, weekStart, "advance_amt", sum);
+        results.push(`${branchName(branchId)} ${fmtWon(sum)}`);
+      }
+    }
+    renderWeekClose();
+    if(statusEl) statusEl.textContent = "";
+    showToast(results.length ? `선수금 리스트 반영: ${results.join(", ")}` : "지점 시트(군산/목포/서산)를 찾지 못했습니다");
+  }catch(err){
+    console.error(err);
+    if(statusEl) statusEl.textContent = "";
+    showToast("선수금 리스트 처리 중 오류가 발생했습니다");
+  }
+}
+async function handlePrListUpload(file, branchId){
+  if(!file) return;
+  const statusEl = document.getElementById("week-upload-status");
+  try{
+    if(statusEl) statusEl.textContent = `${branchName(branchId)} PR 리스트 분석 중…`;
+    const wb = await readWorkbookFile(file);
+    const sheetName = wb.SheetNames.find(n=>n.includes("PR 리스트")) || wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:true});
+    const count = countPrListRows(rows);
+    if(statusEl) statusEl.textContent = "";
+    if(count === null){ showToast("PR 리스트 형식을 인식하지 못했습니다"); return; }
+    const weekStart = weekRangeOf(todayKST()).start;
+    await saveWeekMetric(branchId, weekStart, "pr_list", count);
+    renderWeekClose();
+    showToast(`${branchName(branchId)} PR 리스트 반영: ${count}건`);
+  }catch(err){
+    console.error(err);
+    if(statusEl) statusEl.textContent = "";
+    showToast("PR 리스트 처리 중 오류가 발생했습니다");
+  }
 }
 async function renderIntakeAnalysis(){
   const wrap = document.getElementById("sa-intake-analysis");
