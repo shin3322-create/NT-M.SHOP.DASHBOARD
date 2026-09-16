@@ -765,12 +765,16 @@ function applyIdentityRestrictions(){
   const label = document.getElementById("identity-label");
   if(label) label.textContent = identityRoleLabel();
   const isViewer = myIdentity?.role === "viewer" || myIdentity?.role === "team_lead" || myIdentity?.role === "te";
+  const isAdmin = myIdentity?.role === "admin";
   const isSA = myIdentity?.role === "sa";
   const isReception = myIdentity?.role === "reception";
   ["nav-sa","nav-reception","nav-loaner"].forEach(id=>{
     const el = document.getElementById(id);
     if(el) el.hidden = isViewer;
   });
+  const settingsNav = document.getElementById("nav-settings");
+  if(settingsNav) settingsNav.hidden = !isAdmin;
+  if(!isAdmin && currentView === "settings") switchView("dashboard");
   const saSel = document.getElementById("sa-person");
   if(saSel){
     if(isSA && myIdentity.personId){ saSel.value = myIdentity.personId; saSel.disabled = true; }
@@ -1486,7 +1490,8 @@ function renderBranchCards(viewDate, realToday){
     const pct = target ? Math.min(1, mtdSA.total_sales/target) : 0;
     const hex = branchHex(b.id);
     const focusUnshipped = countUnshippedSA(b.id, d => d===viewDate);
-    const accumulatedUnshipped = countUnshippedSA(b.id, () => true);
+    const thisWeek = weekRangeOf(realToday);
+    const weeklyUnshipped = countUnshippedSA(b.id, d => d>=thisWeek.start && d<=thisWeek.end);
     return `
       <div class="card branch-card" style="--branch-color:${hex};">
         <div class="b-name"><span class="dot"></span>${esc(b.name)} 지점</div>
@@ -1510,7 +1515,7 @@ function renderBranchCards(viewDate, realToday){
         </div>
         <div class="mini-stats">
           <span>${dateLabel} 미출고 <b class="num" style="${focusUnshipped>0?'color:var(--critical);':''}">${focusUnshipped}</b></span>
-          <span>누적 미출고 <b class="num" style="${accumulatedUnshipped>0?'color:var(--warning);':''}">${accumulatedUnshipped}</b></span>
+          <span>주간 미출고 <b class="num" style="${weeklyUnshipped>0?'color:var(--warning);':''}">${weeklyUnshipped}</b></span>
         </div>
       </div>`;
   }).join("");
@@ -1578,17 +1583,18 @@ function renderReceptionTable(today){
   });
   document.getElementById("reception-table-hint").textContent = monthRangeOf(today).ym + " 누계";
   const html = `
-    <thead><tr><th>매니저</th><th>지점</th><th class="right">오늘 입고</th><th class="right">이달 예약</th><th class="right">이달 노쇼</th><th class="right">이달 픽딜</th></tr></thead>
+    <thead><tr><th>매니저</th><th>지점</th><th class="right">오늘 입고</th><th class="right">재예약</th><th class="right">이달 예약</th><th class="right">이달 노쇼</th><th class="right">이달 픽딜</th></tr></thead>
     <tbody>
       ${rows.map(r=>`
         <tr>
           <td>${esc(r.p.name)}</td>
           <td><span class="pill ${r.p.branch}">${esc(branchName(r.p.branch))}</span></td>
           <td class="right num">${r.t.checkin_count}</td>
+          <td class="right num">${r.mtd.rebook_o}</td>
           <td class="right num">${r.mtd.resv_count}</td>
           <td class="right num">${r.mtd.noshow_count}</td>
           <td class="right num">${r.mtd.pickdel_count}</td>
-        </tr>`).join("") || '<tr class="empty-row"><td colspan="6">등록된 리셉션 매니저가 없습니다</td></tr>'}
+        </tr>`).join("") || '<tr class="empty-row"><td colspan="7">등록된 리셉션 매니저가 없습니다</td></tr>'}
     </tbody>`;
   document.getElementById("table-reception").innerHTML = html;
 }
@@ -1649,15 +1655,19 @@ function renderLineChart(today){
 
   const W=640,H=260,padL=52,padR=14,padT=14,padB=28;
   const plotW=W-padL-padR, plotH=H-padT-padB;
-  const maxV = niceCeil(Math.max(1, ...series.flatMap(s=>s.values)));
+  // 일 매출은 3,000만원을 넘지 않으므로 눈금을 3,500만원으로 고정해 그래프가 매번 출렁이지 않고 보기 좋게 유지되도록 함
+  const LINE_CHART_MAX = 3500;
+  const maxV = Math.max(LINE_CHART_MAX, niceCeil(Math.max(1, ...series.flatMap(s=>s.values))));
   const n = dates.length;
   const xStep = n>1 ? plotW/(n-1) : 0;
   const xAt = i => padL + i*xStep;
   const yAt = v => padT + plotH - (v/maxV)*plotH;
 
-  const gridLines = [0,0.25,0.5,0.75,1].map(f=>{
-    const y = padT + plotH*(1-f);
-    const val = Math.round(maxV*f);
+  const gridStep = 500;
+  const gridSteps = [];
+  for(let v=0; v<=maxV; v+=gridStep) gridSteps.push(v);
+  const gridLines = gridSteps.map(val=>{
+    const y = padT + plotH*(1 - val/maxV);
     return `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" style="stroke:var(--grid)" stroke-width="1"/>
             <text x="${padL-8}" y="${y+4}" text-anchor="end" font-size="10" style="fill:var(--text-muted)">${val.toLocaleString()}</text>`;
   }).join("");
