@@ -683,6 +683,7 @@
   <option value="고객 변심"></option>
   <option value="차량판매"></option>
   <option value="재예약"></option>
+  <option value="노쇼콜 부재"></option>
   <option value="기타"></option>
 </datalist>
 
@@ -722,7 +723,7 @@ const RC_SERVICE_TYPES = ["Maintenance","Recall/TC","경수리","중수리","진
 const RC_STATUS = ["예약접수","차량접수","예약취소","No Show","비예약"];
 const RC_PICKDEL = ["","픽딜","고객입고"];
 const STAY_REASONS = ["부품대기","수리 중","진단","수리완료"];
-const CANCEL_REASONS = ["고객 변심","차량판매","재예약","기타"];
+const CANCEL_REASONS = ["고객 변심","차량판매","재예약","노쇼콜 부재","기타"];
 const REOPEN_REASONS = ["부품대기","재 점검","재수리","고객 약속","기타"];
 
 /* ---------------------------------------------------------------- */
@@ -803,6 +804,9 @@ function fmtManwon(n){ n = Number(n)||0; return Math.round(n/10000).toLocaleStri
 function fmtPct(x){ if(!isFinite(x)) return "0%"; return (x*100).toFixed(1) + "%"; }
 function todayKST(){
   return new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Seoul",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+}
+function nowKSTHour(){
+  return Number(new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Seoul",hour:"2-digit",hour12:false}).format(new Date()));
 }
 function nowKSTLabel(){
   const d = new Date();
@@ -962,6 +966,22 @@ async function init(){
   subscribeWeekMetrics();
   renderAll();
   applyIdentityRestrictions();
+  scheduleAutoReload();
+}
+
+/* ---------------------------------------------------------------- */
+/* 대시보드를 계속 켜 두는 화면(예: 사무실 모니터)을 위한 자동 새로고침. */
+/* 데이터 자체는 실시간으로 갱신되지만, 새 버전을 배포했을 때 화면에    */
+/* 반영되려면 새로고침이 필요하므로 대시보드 화면(입력 중인 폼이 없는   */
+/* 화면)일 때만 주기적으로 자동 새로고침해서 최신 배포본을 불러옵니다.   */
+/* ---------------------------------------------------------------- */
+const AUTO_RELOAD_INTERVAL_MS = 15 * 60 * 1000; // 15분
+function scheduleAutoReload(){
+  setInterval(()=>{
+    if(currentView === "dashboard"){
+      window.location.reload();
+    }
+  }, AUTO_RELOAD_INTERVAL_MS);
 }
 
 function setDefaultDates(){
@@ -1178,22 +1198,29 @@ function countUnshippedSA(branchId, filterFn){
 }
 
 const ISSUES_CUTOFF_DATE = "2026-09-13"; // 이 날짜 이전 자료는 "입력 수정 필요" 목록에서 제외
+const ISSUES_TODAY_SHOW_HOUR = 17; // 당일 자료는 이 시각(KST) 이후부터 "입력 수정 필요"에 표시
 function collectInputIssues(){
   const issues = [];
+  const today = todayKST();
+  const showToday = nowKSTHour() >= ISSUES_TODAY_SHOW_HOUR;
   for(const doc of saDocs.values()){
     if(doc.date < ISSUES_CUTOFF_DATE) continue;
+    if(doc.date === today && !showToday) continue;
     (doc.entries||[]).forEach(e=>{
       if(!e.ro_no) return;
       const base = { kind:"sa", branch:doc.branch_slug, person:doc.sa_name, personId:doc.sa_id, date:doc.date, ref:e.ro_no };
       if(!e.checkin_time) issues.push({ ...base, msg:"입고시간 누락" });
-      if(e.checkout_yn !== "O" && e.checkout_yn !== "X") issues.push({ ...base, msg:"출고여부(O/X) 미입력" });
-      if(e.loaner_used !== "O" && e.loaner_used !== "X") issues.push({ ...base, msg:"로너카(O/X) 미입력" });
+      const checkoutMissing = e.checkout_yn !== "O" && e.checkout_yn !== "X";
+      if(checkoutMissing) issues.push({ ...base, msg:"출고여부(O/X) 미입력" });
+      // 출고여부가 아직 미입력이면 로너카 O/X는 출고 처리 후 자연히 정리되므로 중복 표시하지 않음
+      else if(e.loaner_used !== "O" && e.loaner_used !== "X") issues.push({ ...base, msg:"로너카(O/X) 미입력" });
       if(e.checkout_yn === "X" && !e.stay_reason) issues.push({ ...base, msg:"숙박 사유 누락" });
       if(e.return_date && !e.return_reason) issues.push({ ...base, msg:"재입고 연락사유 누락" });
     });
   }
   for(const doc of receptionDocs.values()){
     if(doc.date < ISSUES_CUTOFF_DATE) continue;
+    if(doc.date === today && !showToday) continue;
     (doc.entries||[]).forEach(e=>{
       if(!(e.customer || e.car_no || e.resv_no)) return;
       const base = { kind:"reception", branch:doc.branch_slug, person:doc.manager, personId:doc.manager_id,
@@ -1212,7 +1239,7 @@ function renderInputIssues(){
   const issues = collectInputIssues();
   const hint = document.getElementById("issues-hint");
   if(hint){
-    hint.textContent = `어드바이저·리셉션 입력 중 확인이 필요한 항목 · 이번 달 기준 · 문제를 해결하면 자동으로 목록에서 사라집니다 (${issues.length}건)`;
+    hint.textContent = `어드바이저·리셉션 입력 중 확인이 필요한 항목 · 이번 달 기준 · 당일 자료는 17시 이후부터 표시됩니다 · 문제를 해결하면 자동으로 목록에서 사라집니다 (${issues.length}건)`;
   }
   const html = `
     <thead><tr><th>구분</th><th>지점</th><th>담당자</th><th>일자</th><th>RO/접수번호</th><th>문제</th><th style="width:70px;"></th></tr></thead>
