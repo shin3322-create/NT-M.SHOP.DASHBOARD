@@ -583,7 +583,7 @@
             <th style="width:34px;">#</th><th style="width:88px;">예약 시간</th><th style="width:120px;">접수번호</th>
             <th>고객명</th><th>차량번호</th><th>모델</th><th style="width:150px;">서비스 타입</th>
             <th style="width:110px;">상태</th><th style="width:100px;">픽딜/입고</th><th style="width:70px;">입고</th>
-            <th>사유/비고</th><th style="width:70px;">재예약</th><th style="width:36px;"></th>
+            <th>사유/비고</th><th style="width:70px;">재예약</th><th style="width:120px;">재예약 일자</th><th style="width:36px;"></th>
           </tr></thead>
           <tbody id="rc-entry-body"></tbody>
         </table>
@@ -716,7 +716,7 @@ const DEFAULT_ROSTER = {
 };
 const DEFAULT_TARGETS = { gunsan:253000000, mokpo:310000000, seosan:300000000 };
 
-const SA_SERVICE_TYPES = ["RETAIL","BSI","W 보증","RECALL","보험","내부처리","SP판매","WP판매"];
+const SA_SERVICE_TYPES = ["RETAIL","BSI","W 보증","RECALL","보험","내부처리","SP판매","WP판매","대규모 리콜"];
 const SA_REVENUE_CATS  = ["RETAIL","BSI","W 보증","RECALL","보험","내부처리"];
 const RC_SERVICE_TYPES = ["Maintenance","Recall/TC","경수리","중수리","진단","소음","사고수리","입고 Proactive-RITA"];
 const RC_STATUS = ["예약접수","차량접수","예약취소","No Show","비예약"];
@@ -864,15 +864,20 @@ function clearBanner(){ document.getElementById("banner-slot").innerHTML = ""; }
 /* ---------------------------------------------------------------- */
 function bucketSA(entries){
   const b = {RETAIL:0,BSI:0,"W 보증":0,RECALL:0,"보험":0,"내부처리":0};
-  let sp=0, wp=0, roCount=0, checkoutO=0, checkoutX=0, loanerCount=0;
+  let sp=0, wp=0, roCount=0, checkoutO=0, checkoutX=0, loanerCount=0, massRecall=0;
   for(const e of entries){
     if(!e.ro_no) continue;
-    roCount++;
     const amt = Number(e.amount)||0;
-    if(e.svc_type === "SP판매"){ b.RETAIL += amt; sp++; }
-    else if(e.svc_type === "WP판매"){ b.RETAIL += amt; wp++; }
-    else if(e.svc_type in b){ b[e.svc_type] += amt; }
-    else { b.RETAIL += amt; }
+    if(e.svc_type === "대규모 리콜"){
+      // 대규모 리콜은 매출 합계·RO 건수 집계에서 제외하고 별도 금액으로만 집계합니다.
+      massRecall += amt;
+    } else {
+      roCount++;
+      if(e.svc_type === "SP판매"){ b.RETAIL += amt; sp++; }
+      else if(e.svc_type === "WP판매"){ b.RETAIL += amt; wp++; }
+      else if(e.svc_type in b){ b[e.svc_type] += amt; }
+      else { b.RETAIL += amt; }
+    }
     if(e.checkout_yn === "O") checkoutO++;
     else if(e.checkout_yn === "X") checkoutX++;
     if(e.loaner_used === "O") loanerCount++;
@@ -880,7 +885,8 @@ function bucketSA(entries){
   const total = Object.values(b).reduce((a,c)=>a+c,0);
   return { total_sales: total, retail:b.RETAIL, bsi:b.BSI, warranty:b["W 보증"], recall:b.RECALL,
             insurance:b["보험"], internal:b["내부처리"], sp_count:sp, wp_count:wp,
-            ro_count: roCount, checkout_o:checkoutO, checkout_x:checkoutX, loaner_count:loanerCount };
+            ro_count: roCount, checkout_o:checkoutO, checkout_x:checkoutX, loaner_count:loanerCount,
+            mass_recall: massRecall };
 }
 function summarizeReception(entries){
   const valid = entries.filter(e => e.customer || e.car_no || e.resv_no || e.status);
@@ -1136,7 +1142,7 @@ function renderAll(){
 /* ================================================================ */
 function aggregateSA(branchId, saId, filterFn){
   let out = { total_sales:0, retail:0, bsi:0, warranty:0, recall:0, insurance:0, internal:0,
-              sp_count:0, wp_count:0, ro_count:0, checkout_o:0, checkout_x:0, loaner_count:0 };
+              sp_count:0, wp_count:0, ro_count:0, checkout_o:0, checkout_x:0, loaner_count:0, mass_recall:0 };
   for(const doc of saDocs.values()){
     if(branchId && doc.branch_slug !== branchId) continue;
     if(saId && doc.sa_id !== saId) continue;
@@ -1504,7 +1510,7 @@ function renderBranchCards(viewDate, realToday){
           <div class="fig"><span class="label">${dateLabel} 매출</span><span class="value today num">${fmtManwon(focusSA.total_sales)}만</span></div>
           <div class="fig"><span class="label">전일 매출</span><span class="value num">${fmtManwon(prevDaySA.total_sales)}만</span></div>
           <div class="fig"><span class="label">이달 누계</span><span class="value num">${fmtManwon(mtdSA.total_sales)}만</span></div>
-          <div class="fig"><span class="label">${dateLabel} RO</span><span class="value num">${focusSA.ro_count}건</span></div>
+          <div class="fig"><span class="label">대규모 리콜(이달)</span><span class="value num">${fmtManwon(mtdSA.mass_recall)}만</span></div>
         </div>
         <div class="mini-stats">
           <span>예약 <b class="num">${mtdRC.resv_count}</b></span>
@@ -2386,40 +2392,20 @@ function renderSAEntryTable(){
   });
   updateSASummary();
 }
-function parseTimeInput(raw){
-  if(raw === undefined || raw === null) return "";
-  const s = String(raw).trim();
-  if(!s) return "";
-  let m = s.match(/^(\d{1,2})[:.](\d{2})(?:[:.]\d{2})?\s*(AM|PM|am|pm|오전|오후)?$/);
-  if(m){
-    let h = parseInt(m[1],10);
-    const mm = m[2];
-    const suffix = (m[3]||"").toUpperCase();
-    if(suffix === "PM" || suffix === "오후"){ if(h < 12) h += 12; }
-    else if(suffix === "AM" || suffix === "오전"){ if(h === 12) h = 0; }
-    if(h>=0 && h<=23) return String(h).padStart(2,"0") + ":" + mm;
-    return s;
-  }
-  m = s.match(/^(\d{1,2})(\d{2})$/);
-  if(m){
-    const h = parseInt(m[1],10);
-    if(h>=0 && h<=23) return String(h).padStart(2,"0") + ":" + m[2];
-  }
-  return s; // 아직 완성되지 않은 입력이거나 인식할 수 없는 형식이면 입력한 그대로 둠(데이터 손실 방지)
-}
 function onSAFieldChange(ev){
   const tr = ev.target.closest("tr");
   const idx = Number(tr.dataset.idx);
   const field = ev.target.dataset.f;
   let value = ev.target.value;
-  if(field === "checkin_time"){
-    const normalized = parseTimeInput(value);
-    if(normalized !== value){
-      value = normalized;
-      ev.target.value = normalized;
+  // 입고 시간은 로직으로 바꾸지 않고 SA가 입력한 값 그대로 저장합니다.
+  saEntries[idx][field] = value;
+  if(field === "svc_type"){
+    if(value === "SP판매" || value === "WP판매"){
+      saEntries[idx].amount = 0;
+      renderSAEntryTable();
+      return;
     }
   }
-  saEntries[idx][field] = value;
   if(field === "return_date"){
     if(!ev.target.value) saEntries[idx].return_reason = "";
     renderSAEntryTable();
@@ -2437,6 +2423,7 @@ function updateSASummary(){
     <div class="item"><span class="k">RECALL</span><span class="v num">${fmtWon(s.recall)}</span></div>
     <div class="item"><span class="k">보험</span><span class="v num">${fmtWon(s.insurance)}</span></div>
     <div class="item"><span class="k">내부처리</span><span class="v num">${fmtWon(s.internal)}</span></div>
+    <div class="item"><span class="k">대규모 리콜 (매출 제외)</span><span class="v num">${fmtWon(s.mass_recall)}</span></div>
     <div class="item"><span class="k">RO 발행 수</span><span class="v num">${s.ro_count}건</span></div>
     <div class="item"><span class="k">SP+ / WP 판매</span><span class="v num">${s.sp_count} / ${s.wp_count}</span></div>
     <div class="item"><span class="k">출고완료 / 숙박</span><span class="v num">${s.checkout_o} / ${s.checkout_x}</span></div>
@@ -2532,7 +2519,7 @@ function timeOnly(v){
 function renderRCEntryTable(){
   const body = document.getElementById("rc-entry-body");
   if(rcEntries.length===0){
-    body.innerHTML = '<tr class="empty-row"><td colspan="13">예약 추가 버튼으로 오늘 접수된 예약을 입력하세요</td></tr>';
+    body.innerHTML = '<tr class="empty-row"><td colspan="14">예약 추가 버튼으로 오늘 접수된 예약을 입력하세요</td></tr>';
     updateRCSummary();
     return;
   }
@@ -2555,6 +2542,7 @@ function renderRCEntryTable(){
       </td>
       <td><input type="text" list="cancel-reason-list" data-f="cancel_reason" value="${esc(e.cancel_reason)}" placeholder="-" ${e.checkin_yn!=='X'?'disabled':''}></td>
       <td><select data-f="rebook"><option value="">-</option><option value="O" ${e.rebook==='O'?'selected':''}>O</option><option value="X" ${e.rebook==='X'?'selected':''}>X</option></select></td>
+      <td><input type="date" data-f="rebook_dt" value="${esc(e.rebook_dt||"")}" ${e.rebook!=='O'?'disabled':''}></td>
       <td><button class="btn icon danger sm" data-del="${i}" title="삭제">✕</button></td>
     </tr>`).join("");
 
@@ -2583,6 +2571,11 @@ function onRCFieldChange(ev){
   const idx = Number(tr.dataset.idx);
   const field = ev.target.dataset.f;
   rcEntries[idx][field] = ev.target.value;
+  if(field === "rebook"){
+    if(ev.target.value !== "O") rcEntries[idx].rebook_dt = "";
+    renderRCEntryTable();
+    return;
+  }
   updateRCSummary();
 }
 function updateRCSummary(){
@@ -2830,11 +2823,11 @@ function buildBackupCSV(saDocsArr, rcDocsArr){
   });
   lines.push("");
   lines.push("=== 리셉션 일마감 ===");
-  lines.push(["날짜","지점","매니저","예약시간","접수번호","고객명","차량번호","모델","서비스타입","상태","픽딜/입고","입고여부","사유/비고","재예약"].map(csvEscape).join(","));
+  lines.push(["날짜","지점","매니저","예약시간","접수번호","고객명","차량번호","모델","서비스타입","상태","픽딜/입고","입고여부","사유/비고","재예약","재예약일자"].map(csvEscape).join(","));
   rcDocsArr.forEach(data=>{
     (data.entries||[]).forEach(e=>{
       lines.push([data.date, branchName(data.branch_slug), data.manager, e.resv_dt, e.resv_no, e.customer, e.car_no,
-                  e.model, e.svc_type, e.status, e.pickdel, e.checkin_yn, e.cancel_reason, e.rebook].map(csvEscape).join(","));
+                  e.model, e.svc_type, e.status, e.pickdel, e.checkin_yn, e.cancel_reason, e.rebook, e.rebook_dt].map(csvEscape).join(","));
     });
   });
   return lines.join("\r\n");
