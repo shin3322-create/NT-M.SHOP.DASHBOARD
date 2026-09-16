@@ -616,6 +616,14 @@
       </div>
 
       <div class="card">
+        <div class="section-head"><h2>출고·로너카 자료 일괄 수정</h2><span class="hint">출고가 O인데 로너카가 X로 표시되지 않은 기존 자료를 전체 기간에서 찾아 한 번에 고칩니다</span></div>
+        <div class="field-row" style="margin-top:12px;">
+          <div class="field" style="min-width:auto;"><button class="btn primary sm" id="fix-loaner-btn">불일치 자료 일괄 수정</button></div>
+        </div>
+        <p class="muted" style="margin-top:8px;font-size:12px;">전체 기간의 어드바이저 일마감 자료를 검사해서, 출고가 O인데 로너카가 X가 아닌 RO를 자동으로 로너카 X로 고쳐 저장합니다.</p>
+      </div>
+
+      <div class="card">
         <div class="section-head"><h2>이전 데이터 정리</h2><span class="hint">기준 월 이전의 SA·리셉션 일마감 데이터를 영구 삭제해 저장 공간을 확보합니다 (최대 5,000건 제한)</span></div>
         <div class="field-row" style="margin-top:12px;">
           <div class="field">
@@ -2304,6 +2312,44 @@ function bindSettingsForm(){
   });
   document.getElementById("export-month-btn").addEventListener("click", exportMonthCSV);
   document.getElementById("cleanup-btn").addEventListener("click", deleteOldData);
+  document.getElementById("fix-loaner-btn").addEventListener("click", fixLoanerMismatches);
+}
+async function fixLoanerMismatches(){
+  if(!supabaseClient){ showToast("저장 기능을 사용할 수 없습니다"); return; }
+  const btn = document.getElementById("fix-loaner-btn");
+  btn.disabled = true; btn.textContent = "검사 중…";
+  try{
+    const { data, error } = await supabaseClient.from("sa_days").select("*");
+    if(error) throw error;
+    let checkedRows = 0, fixedRows = 0, fixedEntries = 0;
+    for(const row of (data||[])){
+      checkedRows++;
+      const entries = (row.entries||[]).map(e=>({...e}));
+      let changed = false;
+      entries.forEach(e=>{
+        if(e.checkout_yn === "O" && e.loaner_used !== "X"){
+          e.loaner_used = "X";
+          e.loaner_car_no = "";
+          changed = true;
+          fixedEntries++;
+        }
+      });
+      if(changed){
+        const summary = bucketSA(entries);
+        const { error: upErr } = await supabaseClient.from("sa_days").update({ entries, summary }).eq("id", row.id);
+        if(upErr){ console.error(upErr); continue; }
+        fixedRows++;
+        if(saDocs.has(row.id)) saDocs.set(row.id, { ...row, entries, summary });
+      }
+    }
+    showToast(`검사 ${checkedRows}건 중 ${fixedRows}건(RO ${fixedEntries}건) 수정 완료`);
+    renderDashboard();
+  }catch(err){
+    console.error(err);
+    showToast("일괄 수정 중 오류가 발생했습니다");
+  }finally{
+    btn.disabled = false; btn.textContent = "불일치 자료 일괄 수정";
+  }
 }
 async function saveRoster(){
   populatePersonSelectors();
