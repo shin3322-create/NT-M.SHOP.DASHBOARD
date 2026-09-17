@@ -264,6 +264,12 @@
   .stay-status-btn[data-status="수리 중"].active{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
   .stay-status-btn[data-status="수리완료"].active{ background:var(--good-bg); border-color:var(--good); color:var(--good); }
 
+  .loaner-check-btn{
+    border:1px solid var(--border); background:var(--surface); color:var(--text-secondary);
+    padding:5px 9px; border-radius:999px; font-weight:700; cursor:pointer; font-size:11px; white-space:nowrap;
+  }
+  .loaner-check-btn.on{ background:var(--good-bg); border-color:var(--good); color:var(--good); }
+
   .summary-panel{ display:flex; flex-wrap:wrap; gap:10px 22px; }
   .summary-panel .item{ display:flex; flex-direction:column; gap:2px; min-width:96px; }
   .summary-panel .item .k{ font-size:11px; color:var(--text-muted); font-weight:700; }
@@ -661,6 +667,15 @@
       </div>
 
       <div class="card">
+        <div class="section-head"><h2>로너카 대여 이력</h2><span class="hint">전체 기간의 로너카 대여·반납 기록과 서류·면허 진위·DMS·팀장 확인 현황을 조회합니다</span></div>
+        <div class="field-row" style="margin-top:12px;">
+          <div class="field" style="min-width:auto;"><button class="btn primary sm" id="loaner-history-btn">대여 이력 불러오기</button></div>
+        </div>
+        <p class="muted" style="margin-top:8px;font-size:12px;">반납일 기록이 없는(기능 도입 이전에 이미 반납 처리된) 자료는 사용일수가 정확하지 않을 수 있습니다.</p>
+        <div class="table-wrap" style="margin-top:12px;"><table class="data" id="loaner-history-table"></table></div>
+      </div>
+
+      <div class="card">
         <div class="section-head"><h2>이전 데이터 정리</h2><span class="hint">기준 월 이전의 SA·리셉션 일마감 데이터를 영구 삭제해 저장 공간을 확보합니다 (최대 5,000건 제한)</span></div>
         <div class="field-row" style="margin-top:12px;">
           <div class="field">
@@ -831,6 +846,11 @@ function weekRangeOf(dateStr){
   const monday = new Date(d); monday.setUTCDate(d.getUTCDate()-diffToMonday);
   const sunday = new Date(monday); sunday.setUTCDate(monday.getUTCDate()+6);
   return { start: monday.toISOString().slice(0,10), end: sunday.toISOString().slice(0,10) };
+}
+function daysBetweenInclusive(a, b){
+  const d1 = new Date(a+"T00:00:00Z");
+  const d2 = new Date(b+"T00:00:00Z");
+  return Math.round((d2 - d1) / 86400000) + 1;
 }
 function isDarkMode(){
   const root = document.documentElement;
@@ -1460,16 +1480,48 @@ async function updateStayStatus(docId, roNo, status){
 }
 
 function computeLoanerUsage(){
-  // key `${branch_slug}|${car_no}` -> { ro_no, sa_name, date }  (아직 출고되지 않은, 로너카를 사용 중인 RO)
+  // key `${branch_slug}|${car_no}` -> { docId, ro_no, sa_name, date, days, checks }  (아직 출고되지 않은, 로너카를 사용 중인 RO)
   const usage = new Map();
-  for(const doc of saDocs.values()){
+  const today = todayKST();
+  for(const [docId, doc] of saDocs.entries()){
     for(const e of (doc.entries||[])){
       if(e.loaner_used === "O" && e.loaner_car_no && e.checkout_yn !== "O"){
-        usage.set(doc.branch_slug + "|" + e.loaner_car_no, { ro_no:e.ro_no, sa_name:doc.sa_name, date:doc.date });
+        usage.set(doc.branch_slug + "|" + e.loaner_car_no, {
+          docId, ro_no:e.ro_no, sa_name:doc.sa_name, date:doc.date,
+          days: daysBetweenInclusive(doc.date, today),
+          checks: {
+            doc: e.loaner_check_doc === "O",
+            license: e.loaner_check_license === "O",
+            dms: e.loaner_check_dms === "O",
+            leader: e.loaner_check_leader === "O",
+          },
+        });
       }
     }
   }
   return usage;
+}
+const LOANER_CHECK_FIELD_MAP = { doc:"loaner_check_doc", license:"loaner_check_license", dms:"loaner_check_dms", leader:"loaner_check_leader" };
+async function updateLoanerCheck(docId, roNo, field, value){
+  if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
+  const key = LOANER_CHECK_FIELD_MAP[field];
+  if(!key) return;
+  try{
+    const snap = await db.doc("sa_days/"+docId).get();
+    if(!snap.exists){ showToast("데이터를 찾을 수 없습니다"); return; }
+    const data = snap.data();
+    const entries = (data.entries||[]).map(e=>({...e}));
+    const idx = entries.findIndex(e=>e.ro_no === roNo);
+    if(idx === -1){ showToast("해당 RO를 찾을 수 없습니다"); return; }
+    entries[idx][key] = value;
+    const payload = { ...data, entries, submitted_at: new Date().toISOString() };
+    await db.doc("sa_days/"+docId).set(payload);
+    saDocs.set(docId, payload);
+    renderLoanerSummary();
+  }catch(err){
+    console.error(err);
+    showToast("상태 변경 중 오류가 발생했습니다");
+  }
 }
 function renderLoanerSummary(){
   const wrap = document.getElementById("table-loaner");
@@ -1493,8 +1545,16 @@ function renderLoanerSummary(){
   if(hint){
     hint.textContent = roster.branches.map(b=>`${b.name} 대여중 ${counts[b.id]?.inuse||0}·대기 ${counts[b.id]?.waiting||0}`).join("   ·   ");
   }
+  const checkCell = (r, field, label) => {
+    if(!r._inUse) return `<td class="center muted">-</td>`;
+    const on = r._usage.checks[field];
+    return `<td class="center"><button type="button" class="loaner-check-btn ${on?'on':''}" data-doc="${esc(r._usage.docId)}" data-ro="${esc(r._usage.ro_no)}" data-field="${field}" data-value="${on?'':'O'}">${on?'✓ 확인':label}</button></td>`;
+  };
   const html = `
-    <thead><tr><th>지점</th><th>차량번호</th><th>상태</th><th>대여 RO번호</th><th>담당 SA</th><th>대여일</th></tr></thead>
+    <thead><tr>
+      <th>지점</th><th>차량번호</th><th>상태</th><th>대여 RO번호</th><th>담당 SA</th><th>대여일</th>
+      <th class="right">누적일수</th><th>서류</th><th>면허 진위</th><th>DMS</th><th>팀장 확인</th>
+    </tr></thead>
     <tbody>
       ${rows.map(r=>`
         <tr>
@@ -1504,9 +1564,20 @@ function renderLoanerSummary(){
           <td class="num">${esc(r._usage ? r._usage.ro_no : "")}</td>
           <td>${esc(r._usage ? r._usage.sa_name : "")}</td>
           <td class="num">${esc(r._usage ? r._usage.date : "")}</td>
-        </tr>`).join("") || '<tr class="empty-row"><td colspan="6">등록된 로너카가 없습니다</td></tr>'}
+          <td class="right num">${r._inUse ? r._usage.days + "일" : ""}</td>
+          ${checkCell(r,"doc","서류")}
+          ${checkCell(r,"license","면허 진위")}
+          ${checkCell(r,"dms","DMS")}
+          ${checkCell(r,"leader","팀장 확인")}
+        </tr>`).join("") || '<tr class="empty-row"><td colspan="11">등록된 로너카가 없습니다</td></tr>'}
     </tbody>`;
   wrap.innerHTML = html;
+
+  wrap.querySelectorAll(".loaner-check-btn").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      updateLoanerCheck(btn.dataset.doc, btn.dataset.ro, btn.dataset.field, btn.dataset.value);
+    });
+  });
 }
 
 function renderBranchCards(viewDate, realToday){
@@ -1616,18 +1687,21 @@ function renderReceptionTable(today){
   });
   document.getElementById("reception-table-hint").textContent = monthRangeOf(today).ym + " 누계";
   const html = `
-    <thead><tr><th>매니저</th><th>지점</th><th class="right">오늘 입고</th><th class="right">재예약</th><th class="right">이달 예약</th><th class="right">이달 노쇼</th><th class="right">이달 픽딜</th></tr></thead>
+    <thead><tr><th>매니저</th><th>지점</th><th class="right">이달 예약</th><th class="right">이달 노쇼</th><th class="right">재예약(%)</th><th class="right">오늘 노쇼</th><th class="right">오늘 재예약</th></tr></thead>
     <tbody>
-      ${rows.map(r=>`
+      ${rows.map(r=>{
+        const rebookPct = r.mtd.noshow_count > 0 ? r.mtd.rebook_o / r.mtd.noshow_count : null;
+        return `
         <tr>
           <td>${esc(r.p.name)}</td>
           <td><span class="pill ${r.p.branch}">${esc(branchName(r.p.branch))}</span></td>
-          <td class="right num">${r.t.checkin_count}</td>
-          <td class="right num">${r.mtd.rebook_o}</td>
           <td class="right num">${r.mtd.resv_count}</td>
           <td class="right num">${r.mtd.noshow_count}</td>
-          <td class="right num">${r.mtd.pickdel_count}</td>
-        </tr>`).join("") || '<tr class="empty-row"><td colspan="7">등록된 리셉션 매니저가 없습니다</td></tr>'}
+          <td class="right num">${rebookPct===null ? "-" : fmtPct(rebookPct)}</td>
+          <td class="right num">${r.t.noshow_count}</td>
+          <td class="right num">${r.t.rebook_o}</td>
+        </tr>`;
+      }).join("") || '<tr class="empty-row"><td colspan="7">등록된 리셉션 매니저가 없습니다</td></tr>'}
     </tbody>`;
   document.getElementById("table-reception").innerHTML = html;
 }
@@ -1669,7 +1743,10 @@ function renderLineChart(today){
   const {start} = monthRangeOf(today);
   const dates = [];
   { let d = new Date(start+"T00:00:00Z"); const end = new Date(today+"T00:00:00Z");
-    while(d <= end){ dates.push(d.toISOString().slice(0,10)); d.setUTCDate(d.getUTCDate()+1); } }
+    while(d <= end){
+      if(d.getUTCDay() !== 0) dates.push(d.toISOString().slice(0,10)); // 일요일 제외
+      d.setUTCDate(d.getUTCDate()+1);
+    } }
 
   const series = roster.branches.map(b=>{
     const values = dates.map(dt=>{
@@ -1688,65 +1765,58 @@ function renderLineChart(today){
 
   const W=640,H=260,padL=52,padR=14,padT=14,padB=28;
   const plotW=W-padL-padR, plotH=H-padT-padB;
-  // 일 매출은 3,000만원을 넘지 않으므로 눈금을 3,500만원으로 고정해 그래프가 매번 출렁이지 않고 보기 좋게 유지되도록 함
-  const LINE_CHART_MAX = 3500;
-  const maxV = Math.max(LINE_CHART_MAX, niceCeil(Math.max(1, ...series.flatMap(s=>s.values))));
+  // 1,000만원 단위 눈금으로 시인성을 높임 (일 매출이 커지면 눈금도 함께 확장)
+  const GRID_STEP = 1000;
+  const rawMax = Math.max(1, ...series.flatMap(s=>s.values));
+  const maxV = Math.max(3000, Math.ceil(rawMax / GRID_STEP) * GRID_STEP);
   const n = dates.length;
-  const xStep = n>1 ? plotW/(n-1) : 0;
-  const xAt = i => padL + i*xStep;
-  const yAt = v => padT + plotH - (v/maxV)*plotH;
 
-  const gridStep = 500;
   const gridSteps = [];
-  for(let v=0; v<=maxV; v+=gridStep) gridSteps.push(v);
+  for(let v=0; v<=maxV; v+=GRID_STEP) gridSteps.push(v);
   const gridLines = gridSteps.map(val=>{
     const y = padT + plotH*(1 - val/maxV);
     return `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" style="stroke:var(--grid)" stroke-width="1"/>
             <text x="${padL-8}" y="${y+4}" text-anchor="end" font-size="10" style="fill:var(--text-muted)">${val.toLocaleString()}</text>`;
   }).join("");
 
-  const step = Math.max(1, Math.ceil(n/7));
-  const xLabels = dates.map((dt,i)=>{
-    if(i % step !== 0 && i !== n-1) return "";
-    const day = Number(dt.slice(8,10));
-    return `<text x="${xAt(i)}" y="${H-8}" text-anchor="middle" font-size="10" style="fill:var(--text-muted)">${day}일</text>`;
-  }).join("");
+  const groupW = plotW/n;
+  const barGap = 1.5, groupPad = Math.min(6, groupW*0.15);
+  const barW = Math.max(1, (groupW - groupPad*2 - barGap*(roster.branches.length-1)) / roster.branches.length);
+  const yAt = v => padT + plotH - (v/maxV)*plotH;
 
-  const paths = series.map(s=>{
-    const d = s.values.map((v,i)=> (i===0?"M":"L") + xAt(i).toFixed(1) + "," + yAt(v).toFixed(1)).join(" ");
-    return `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>`;
-  }).join("");
+  const step = Math.max(1, Math.ceil(n/10));
+  let bars = "", xLabels = "";
+  dates.forEach((dt,i)=>{
+    const gx = padL + i*groupW;
+    if(i % step === 0 || i === n-1){
+      const day = Number(dt.slice(8,10));
+      xLabels += `<text x="${(gx+groupW/2).toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="10" style="fill:var(--text-muted)">${day}일</text>`;
+    }
+    series.forEach((s,bi)=>{
+      const v = s.values[i];
+      const x = gx + groupPad + bi*(barW+barGap);
+      const y = yAt(v);
+      const h = padT+plotH - y;
+      bars += `<rect data-date="${dt}" data-branch="${s.id}" data-val="${v.toFixed(0)}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(0,h).toFixed(1)}" rx="2" fill="${s.color}" class="bar-rect daily-bar"/>`;
+    });
+  });
 
-  const dots = series.map(s=> s.values.map((v,i)=>
-    `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(v).toFixed(1)}" r="3.5" fill="${s.color}" style="stroke:var(--surface)" stroke-width="1.5"/>`
-  ).join("")).join("");
-
-  const hoverCols = dates.map((dt,i)=>{
-    const x0 = i===0 ? padL : (xAt(i-1)+xAt(i))/2;
-    const x1 = i===n-1 ? W-padR : (xAt(i)+xAt(i+1))/2;
-    return `<rect data-idx="${i}" x="${x0.toFixed(1)}" y="${padT}" width="${(x1-x0).toFixed(1)}" height="${plotH}" fill="transparent" class="hover-col"/>`;
-  }).join("");
-
-  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="지점별 일별 매출 추이">
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="지점별 일별 매출 추이 (일요일 제외)">
       ${gridLines}
       <line x1="${padL}" y1="${padT+plotH}" x2="${W-padR}" y2="${padT+plotH}" style="stroke:var(--baseline)" stroke-width="1"/>
-      ${paths}${dots}${xLabels}
-      <g id="crosshair" style="display:none;"><line x1="0" y1="${padT}" x2="0" y2="${padT+plotH}" style="stroke:var(--text-muted)" stroke-width="1" stroke-dasharray="3,3"/></g>
-      ${hoverCols}
+      ${bars}${xLabels}
     </svg>`;
 
   const svg = box.querySelector("svg");
-  const crosshair = svg.querySelector("#crosshair");
-  svg.querySelectorAll(".hover-col").forEach(rect=>{
+  svg.querySelectorAll(".daily-bar").forEach(rect=>{
     rect.addEventListener("mousemove", (ev)=>{
-      const i = Number(rect.dataset.idx);
-      crosshair.style.display = "block";
-      crosshair.querySelector("line").setAttribute("x1", xAt(i)); crosshair.querySelector("line").setAttribute("x2", xAt(i));
-      const dt = dates[i];
-      const rows = series.map(s=>`<div class="t-row"><span class="k"><span class="sw" style="background:${s.color}"></span>${esc(s.label)}</span><span class="num">${s.values[i].toLocaleString()}만원</span></div>`).join("");
-      showTooltipAt(ev.clientX, ev.clientY, `<div class="t-date">${dt}</div>${rows}`);
+      const dt = rect.dataset.date;
+      const branchId = rect.dataset.branch;
+      const val = Number(rect.dataset.val).toLocaleString();
+      showTooltipAt(ev.clientX, ev.clientY,
+        `<div class="t-date">${dt}</div><div class="t-row"><span class="k"><span class="sw" style="background:${branchHex(branchId)}"></span>${esc(branchName(branchId))}</span><span class="num">${val}만원</span></div>`);
     });
-    rect.addEventListener("mouseleave", ()=>{ crosshair.style.display="none"; hideTooltip(); });
+    rect.addEventListener("mouseleave", hideTooltip);
   });
 }
 
@@ -2336,8 +2406,8 @@ function renderSAEntryTable(){
   const body = document.getElementById("sa-entry-body");
   saEntries.forEach(e=>{
     if(e.checkout_yn === "O" && e.loaner_used !== "X"){
+      if(e.loaner_used === "O" && !e.loaner_return_date) e.loaner_return_date = todayKST();
       e.loaner_used = "X";
-      e.loaner_car_no = "";
     }
   });
   if(saEntries.length===0){
@@ -2402,9 +2472,9 @@ function renderSAEntryTable(){
       const idx = Number(btn.closest("tr").dataset.idx);
       saEntries[idx].checkout_yn = (saEntries[idx].checkout_yn === btn.dataset.set) ? "" : btn.dataset.set;
       if(saEntries[idx].checkout_yn !== "X") saEntries[idx].stay_reason = "";
-      if(saEntries[idx].checkout_yn === "O"){
+      if(saEntries[idx].checkout_yn === "O" && saEntries[idx].loaner_used !== "X"){
+        if(saEntries[idx].loaner_used === "O" && !saEntries[idx].loaner_return_date) saEntries[idx].loaner_return_date = todayKST();
         saEntries[idx].loaner_used = "X";
-        saEntries[idx].loaner_car_no = "";
       }
       renderSAEntryTable();
     });
@@ -2465,8 +2535,8 @@ async function saveSAEntry(){
   const cleaned = saEntries.filter(e=>e.ro_no && e.ro_no.trim());
   cleaned.forEach(e=>{
     if(e.checkout_yn === "O" && e.loaner_used !== "X"){
+      if(e.loaner_used === "O" && !e.loaner_return_date) e.loaner_return_date = todayKST();
       e.loaner_used = "X";
-      e.loaner_car_no = "";
     }
   });
   if(cleaned.length !== saEntries.length){ saEntries = cleaned; renderSAEntryTable(); }
@@ -2673,6 +2743,65 @@ function bindSettingsForm(){
   document.getElementById("export-month-btn").addEventListener("click", exportMonthCSV);
   document.getElementById("cleanup-btn").addEventListener("click", deleteOldData);
   document.getElementById("fix-loaner-btn").addEventListener("click", fixLoanerMismatches);
+  document.getElementById("loaner-history-btn").addEventListener("click", loadLoanerHistory);
+}
+async function loadLoanerHistory(){
+  if(!supabaseClient){ showToast("저장 기능을 사용할 수 없습니다"); return; }
+  const btn = document.getElementById("loaner-history-btn");
+  const table = document.getElementById("loaner-history-table");
+  btn.disabled = true; btn.textContent = "불러오는 중…";
+  try{
+    const { data, error } = await supabaseClient.from("sa_days").select("*");
+    if(error) throw error;
+    const today = todayKST();
+    const rows = [];
+    for(const row of (data||[])){
+      (row.entries||[]).forEach(e=>{
+        if(!e.loaner_car_no) return;
+        const inUse = e.loaner_used === "O";
+        const start = row.date;
+        const end = inUse ? "" : (e.loaner_return_date || "");
+        const days = inUse ? daysBetweenInclusive(start, today) : (end ? daysBetweenInclusive(start, end) : null);
+        rows.push({
+          branch: row.branch_slug, car_no: e.loaner_car_no, ro_no: e.ro_no, sa_name: row.sa_name,
+          start, end, status: inUse ? "대여중" : (end ? "반납완료" : "반납일 미기록"), days,
+          checks: {
+            doc: e.loaner_check_doc === "O", license: e.loaner_check_license === "O",
+            dms: e.loaner_check_dms === "O", leader: e.loaner_check_leader === "O",
+          },
+        });
+      });
+    }
+    rows.sort((a,b)=> (b.start||"").localeCompare(a.start||""));
+    table.innerHTML = `
+      <thead><tr>
+        <th>지점</th><th>차량번호</th><th>RO번호</th><th>담당 SA</th><th>대여일</th><th>반납일</th><th>상태</th>
+        <th class="right">사용일수</th><th>서류</th><th>면허 진위</th><th>DMS</th><th>팀장 확인</th>
+      </tr></thead>
+      <tbody>
+        ${rows.map(r=>`
+          <tr>
+            <td><span class="pill ${r.branch}">${esc(branchName(r.branch))}</span></td>
+            <td>${esc(r.car_no)}</td>
+            <td class="num">${esc(r.ro_no)}</td>
+            <td>${esc(r.sa_name)}</td>
+            <td class="num">${esc(r.start)}</td>
+            <td class="num">${esc(r.end || (r.status==="대여중" ? "-" : "미기록"))}</td>
+            <td>${esc(r.status)}</td>
+            <td class="right num">${r.days===null ? "-" : r.days+"일"}</td>
+            <td class="center">${r.checks.doc?"✓":"-"}</td>
+            <td class="center">${r.checks.license?"✓":"-"}</td>
+            <td class="center">${r.checks.dms?"✓":"-"}</td>
+            <td class="center">${r.checks.leader?"✓":"-"}</td>
+          </tr>`).join("") || '<tr class="empty-row"><td colspan="12">로너카 대여 이력이 없습니다</td></tr>'}
+      </tbody>`;
+    showToast(`대여 이력 ${rows.length}건을 불러왔습니다`);
+  }catch(err){
+    console.error(err);
+    showToast("대여 이력을 불러오지 못했습니다");
+  }finally{
+    btn.disabled = false; btn.textContent = "대여 이력 불러오기";
+  }
 }
 async function fixLoanerMismatches(){
   if(!supabaseClient){ showToast("저장 기능을 사용할 수 없습니다"); return; }
@@ -2688,8 +2817,8 @@ async function fixLoanerMismatches(){
       let changed = false;
       entries.forEach(e=>{
         if(e.checkout_yn === "O" && e.loaner_used !== "X"){
+          // 반납일 기록이 없는 기존 자료이므로 정확한 반납일은 알 수 없어 채우지 않고, 차량번호는 이력 조회를 위해 보존합니다.
           e.loaner_used = "X";
-          e.loaner_car_no = "";
           changed = true;
           fixedEntries++;
         }
@@ -2942,7 +3071,7 @@ function renderLoanerTables(){
       <div class="table-wrap" style="margin-top:10px;">
         <table class="data entry-table" id="loaner-table-${b.id}">
           <thead><tr>
-            <th style="width:34px;">#</th><th>차량번호</th><th style="width:220px;">현재 상태</th><th style="width:36px;"></th>
+            <th style="width:34px;">#</th><th>차량번호</th><th style="width:220px;">현재 상태</th><th style="width:100px;">이달 사용일수</th><th style="width:36px;"></th>
           </tr></thead>
           <tbody id="loaner-body-${b.id}"></tbody>
         </table>
@@ -2965,22 +3094,47 @@ function renderLoanerTables(){
   });
 }
 
+function computeLoanerMonthlyUsage(monthStart, monthEnd){
+  // key `${branch_slug}|${car_no}` -> 해당 기간(월) 내 사용 일수 합계
+  const usage = new Map();
+  const today = todayKST();
+  for(const doc of saDocs.values()){
+    for(const e of (doc.entries||[])){
+      if(!e.loaner_car_no) continue;
+      if(e.loaner_used !== "O" && e.loaner_used !== "X") continue;
+      if(e.loaner_used === "X" && !e.loaner_return_date) continue; // 반납일 기록이 없는 이전 자료는 집계 제외
+      const rangeStart = doc.date;
+      const rangeEnd = e.loaner_used === "O" ? today : e.loaner_return_date;
+      const overlapStart = rangeStart > monthStart ? rangeStart : monthStart;
+      const overlapEnd = rangeEnd < monthEnd ? rangeEnd : monthEnd;
+      if(overlapEnd < overlapStart) continue;
+      const days = daysBetweenInclusive(overlapStart, overlapEnd);
+      const key = doc.branch_slug + "|" + e.loaner_car_no;
+      usage.set(key, (usage.get(key)||0) + days);
+    }
+  }
+  return usage;
+}
 function renderLoanerBranchBody(branchId){
   const body = document.getElementById("loaner-body-"+branchId);
   if(!body) return;
   const rows = loanerEntries[branchId] || [];
   if(rows.length===0){
-    body.innerHTML = '<tr class="empty-row"><td colspan="4">등록된 로너카가 없습니다</td></tr>';
+    body.innerHTML = '<tr class="empty-row"><td colspan="5">등록된 로너카가 없습니다</td></tr>';
     return;
   }
   const usage = computeLoanerUsage();
+  const {start:monthStart, end:monthEnd} = monthRangeOf(todayKST());
+  const monthlyUsage = computeLoanerMonthlyUsage(monthStart, monthEnd);
   body.innerHTML = rows.map((e,i)=>{
     const u = usage.get(branchId + "|" + e.car_no);
+    const days = monthlyUsage.get(branchId + "|" + e.car_no) || 0;
     return `
     <tr data-branch="${branchId}" data-idx="${i}">
       <td class="center muted">${i+1}</td>
       <td><input type="text" data-f="car_no" value="${esc(e.car_no)}" placeholder="12가3456"></td>
       <td style="${u?'color:var(--warning);font-weight:900;':'color:var(--text-muted);'}">${u?`대여중 (${esc(u.ro_no)}·${esc(u.sa_name)})`:'대기중'}</td>
+      <td class="right num">${days}일</td>
       <td><button class="btn icon danger sm" data-loaner-del="${i}" title="삭제">✕</button></td>
     </tr>`;
   }).join("");
