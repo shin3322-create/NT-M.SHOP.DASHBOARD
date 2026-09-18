@@ -767,26 +767,52 @@ let loanerEntries = { gunsan:[], mokpo:[], seosan:[] }; // rows being edited in 
 /* (role/담당자는 관리자가 설정 화면에서 지정합니다. 로그인 자체가       */
 /*  신원 증명이므로 기기별 PIN/역할 선택 절차는 더 이상 필요 없습니다)   */
 /* ---------------------------------------------------------------- */
+function isReadOnlyRole(){
+  const role = myIdentity?.role;
+  return role === "viewer" || role === "team_lead" || role === "te";
+}
 function identityRoleLabel(){
   if(!myIdentity) return "";
+  const roSuffix = isReadOnlyRole() ? " · 읽기 전용" : "";
   if(myIdentity.role === "admin") return " · " + (myProfile?.display_name || "관리자");
-  if(myIdentity.role === "viewer") return " · 뷰어(" + (myProfile?.display_name||"") + ")";
-  if(myIdentity.role === "team_lead") return " · 팀장(" + (myProfile?.display_name||"") + ")";
-  if(myIdentity.role === "te") return " · T.E(" + (myProfile?.display_name||"") + ")";
+  if(myIdentity.role === "manager") return " · 관리팀장(" + (myProfile?.display_name||"") + ")";
+  if(myIdentity.role === "viewer") return " · 뷰어(" + (myProfile?.display_name||"") + ")" + roSuffix;
+  if(myIdentity.role === "team_lead") return " · 팀장(" + (myProfile?.display_name||"") + ")" + roSuffix;
+  if(myIdentity.role === "te") return " · T.E(" + (myProfile?.display_name||"") + ")" + roSuffix;
   if(myIdentity.role === "sa") return " · " + (roster.sa.find(p=>p.id===myIdentity.personId)?.name || myProfile?.display_name || "SA");
   if(myIdentity.role === "reception") return " · " + (roster.reception.find(p=>p.id===myIdentity.personId)?.name || myProfile?.display_name || "리셉션");
   return "";
 }
+function lockContainer(containerId, skipIds){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  const skip = skipIds || [];
+  el.querySelectorAll("input,select,textarea").forEach(x=>{ if(!skip.includes(x.id)) x.disabled = true; });
+  el.querySelectorAll("button").forEach(x=>{ if(!skip.includes(x.id)) x.disabled = true; });
+}
+function applyReadOnlyLock(){
+  if(!isReadOnlyRole()) return;
+  // 뷰어·팀장·T.E — 설정 외 화면은 조회는 가능하지만 저장/추가/삭제/상태변경 등 입력은 모두 잠급니다.
+  ["sa-save-btn","sa-add-row"].forEach(id=>{ const b=document.getElementById(id); if(b) b.disabled = true; });
+  ["rc-save-btn","rc-add-row","rc-excel-btn"].forEach(id=>{ const b=document.getElementById(id); if(b) b.disabled = true; });
+  lockContainer("sa-entry-body");
+  lockContainer("rc-entry-body");
+  document.querySelectorAll('table[id^="loaner-table-"]').forEach(t=> lockContainer(t.id));
+  document.querySelectorAll('[data-loaner-add],[data-loaner-save]').forEach(b=> b.disabled = true);
+  lockContainer("table-loaner");
+  lockContainer("staying-wrap");
+  lockContainer("table-return");
+}
 function applyIdentityRestrictions(){
   const label = document.getElementById("identity-label");
   if(label) label.textContent = identityRoleLabel();
-  const isViewer = myIdentity?.role === "viewer" || myIdentity?.role === "team_lead" || myIdentity?.role === "te";
   const isAdmin = myIdentity?.role === "admin";
   const isSA = myIdentity?.role === "sa";
   const isReception = myIdentity?.role === "reception";
+  // 설정 화면을 제외한 모든 탭은 뷰어·팀장·T.E·관리팀장 모두 볼 수 있습니다 (입력 가능 여부만 다름)
   ["nav-sa","nav-reception","nav-loaner"].forEach(id=>{
     const el = document.getElementById(id);
-    if(el) el.hidden = isViewer;
+    if(el) el.hidden = false;
   });
   const settingsNav = document.getElementById("nav-settings");
   if(settingsNav) settingsNav.hidden = !isAdmin;
@@ -801,6 +827,7 @@ function applyIdentityRestrictions(){
     if(isReception && myIdentity.personId){ rcSel.value = myIdentity.personId; rcSel.disabled = true; }
     else { rcSel.disabled = false; }
   }
+  applyReadOnlyLock();
 }
 async function handleLogout(){
   try{ await supabaseClient.auth.signOut(); }catch(e){}
@@ -1300,6 +1327,7 @@ function renderDashboard(){
   renderServiceBarChart(today);
   renderSATable(today);
   renderReceptionTable(today);
+  applyReadOnlyLock();
 }
 
 const RETURN_STATUS_BUTTONS = [
@@ -1400,6 +1428,7 @@ function collectStayingVehicles(){
         rows.push({
           docId, ro_no:e.ro_no, svc_type:e.svc_type||"",
           stay_reason:e.stay_reason||"", branch:doc.branch_slug, sa_name:doc.sa_name, date:doc.date,
+          stay_car_no:e.stay_car_no||"", stay_parts_eta:e.stay_parts_eta||"", stay_repair_note:e.stay_repair_note||"",
         });
       }
     });
@@ -1426,8 +1455,8 @@ function renderStayingTable(){
           <span class="pill ${b.id}">${esc(b.name)}</span>
           <span class="hint">${list.length}대</span>
         </div>
-        <div class="table-wrap"><table class="data">
-          <thead><tr><th>RO 번호</th><th>담당 SA</th><th>입고일</th><th>서비스 종류</th><th>상태</th></tr></thead>
+        <div class="table-wrap"><table class="data entry-table">
+          <thead><tr><th>RO 번호</th><th>담당 SA</th><th>입고일</th><th>서비스 종류</th><th style="width:120px;">차량번호</th><th style="width:130px;">부품 도착일자</th><th style="width:180px;">수리내용</th><th>상태</th></tr></thead>
           <tbody>
             ${list.map(r=>`
               <tr data-doc="${esc(r.docId)}" data-ro="${esc(r.ro_no)}">
@@ -1435,12 +1464,15 @@ function renderStayingTable(){
                 <td>${esc(r.sa_name)}</td>
                 <td class="num">${esc(r.date)}</td>
                 <td>${esc(r.svc_type)}</td>
+                <td><input type="text" class="stay-detail-input" data-field="stay_car_no" value="${esc(r.stay_car_no)}" placeholder="12가3456"></td>
+                <td><input type="date" class="stay-detail-input" data-field="stay_parts_eta" value="${esc(r.stay_parts_eta)}"></td>
+                <td><input type="text" class="stay-detail-input" data-field="stay_repair_note" value="${esc(r.stay_repair_note)}" placeholder="수리내용"></td>
                 <td>
                   <div class="stay-status-group">
                     ${STAY_STATUS_BUTTONS.map(s=>`<button type="button" class="stay-status-btn ${r.stay_reason===s.key?'active':''}" data-status="${esc(s.key)}">${esc(s.label)}</button>`).join("")}
                   </div>
                 </td>
-              </tr>`).join("") || '<tr class="empty-row"><td colspan="5">숙박 중인 차량이 없습니다</td></tr>'}
+              </tr>`).join("") || '<tr class="empty-row"><td colspan="8">숙박 중인 차량이 없습니다</td></tr>'}
           </tbody>
         </table></div>
       </div>`;
@@ -1452,6 +1484,31 @@ function renderStayingTable(){
       updateStayStatus(tr.dataset.doc, tr.dataset.ro, btn.dataset.status);
     });
   });
+  wrap.querySelectorAll(".stay-detail-input").forEach(el=>{
+    el.addEventListener("change", ()=>{
+      const tr = el.closest("tr");
+      updateStayDetail(tr.dataset.doc, tr.dataset.ro, el.dataset.field, el.value);
+    });
+  });
+  applyReadOnlyLock();
+}
+async function updateStayDetail(docId, roNo, field, value){
+  if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
+  try{
+    const snap = await db.doc("sa_days/"+docId).get();
+    if(!snap.exists){ showToast("데이터를 찾을 수 없습니다"); return; }
+    const data = snap.data();
+    const entries = (data.entries||[]).map(e=>({...e}));
+    const idx = entries.findIndex(e=>e.ro_no === roNo);
+    if(idx === -1){ showToast("해당 RO를 찾을 수 없습니다"); return; }
+    entries[idx][field] = value;
+    const payload = { ...data, entries, submitted_at: new Date().toISOString() };
+    await db.doc("sa_days/"+docId).set(payload);
+    saDocs.set(docId, payload);
+  }catch(err){
+    console.error(err);
+    showToast("저장 중 오류가 발생했습니다");
+  }
 }
 async function updateStayStatus(docId, roNo, status){
   if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
@@ -2413,6 +2470,7 @@ function renderSAEntryTable(){
   if(saEntries.length===0){
     body.innerHTML = '<tr class="empty-row"><td colspan="11">RO 추가 버튼으로 오늘 입고된 차량을 입력하세요</td></tr>';
     updateSASummary();
+    applyReadOnlyLock();
     return;
   }
   const branchId = currentSABranch();
@@ -2488,6 +2546,7 @@ function renderSAEntryTable(){
     });
   });
   updateSASummary();
+  applyReadOnlyLock();
 }
 function onSAFieldChange(ev){
   const tr = ev.target.closest("tr");
@@ -2618,6 +2677,7 @@ function renderRCEntryTable(){
   if(rcEntries.length===0){
     body.innerHTML = '<tr class="empty-row"><td colspan="14">예약 추가 버튼으로 오늘 접수된 예약을 입력하세요</td></tr>';
     updateRCSummary();
+    applyReadOnlyLock();
     return;
   }
   body.innerHTML = rcEntries.map((e,i)=>`
@@ -2662,6 +2722,7 @@ function renderRCEntryTable(){
     });
   });
   updateRCSummary();
+  applyReadOnlyLock();
 }
 function onRCFieldChange(ev){
   const tr = ev.target.closest("tr");
@@ -2907,7 +2968,7 @@ function renderSettings(){
 /* 직원 승인 / 역할 관리 (admin only) — Supabase Auth 계정과              */
 /* 이 앱의 역할(관리자/SA/리셉션/뷰어) + 담당자를 연결합니다                */
 /* ---------------------------------------------------------------- */
-const ROLE_LABELS = { pending:"승인 대기", admin:"관리자", sa:"SA", reception:"리셉션", team_lead:"팀장", te:"T.E", viewer:"뷰어" };
+const ROLE_LABELS = { pending:"승인 대기", admin:"관리자", manager:"관리팀장", sa:"SA", reception:"리셉션", team_lead:"팀장", te:"T.E", viewer:"뷰어" };
 async function renderProfilesPanel(){
   const wrap = document.getElementById("settings-profiles");
   wrap.innerHTML = '<p class="muted">불러오는 중…</p>';
@@ -3092,6 +3153,7 @@ function renderLoanerTables(){
   wrap.querySelectorAll("[data-loaner-save]").forEach(btn=>{
     btn.addEventListener("click", ()=> saveLoanerBranch(btn.dataset.loanerSave));
   });
+  applyReadOnlyLock();
 }
 
 function computeLoanerMonthlyUsage(monthStart, monthEnd){
@@ -3121,6 +3183,7 @@ function renderLoanerBranchBody(branchId){
   const rows = loanerEntries[branchId] || [];
   if(rows.length===0){
     body.innerHTML = '<tr class="empty-row"><td colspan="5">등록된 로너카가 없습니다</td></tr>';
+    applyReadOnlyLock();
     return;
   }
   const usage = computeLoanerUsage();
@@ -3149,6 +3212,7 @@ function renderLoanerBranchBody(branchId){
       renderLoanerBranchBody(branchId);
     });
   });
+  applyReadOnlyLock();
 }
 function onLoanerFieldChange(ev){
   const tr = ev.target.closest("tr");
