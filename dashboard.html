@@ -487,6 +487,12 @@
         </div>
       </div>
       <div class="hint" id="week-upload-status" style="margin-top:8px;"></div>
+      <div class="field-row" style="margin-top:12px;">
+        <div class="field" style="min-width:auto;">
+          <button class="btn danger sm" id="week-clear-btn">선택된 주 업로드값 지우기</button>
+        </div>
+        <span class="hint">위에서 선택된 주의 OPEN RO·PR리스트·선수금 값(전 지점)을 지웁니다. 잘못된 주에 업로드했을 때 사용하세요.</span>
+      </div>
     </div>
     <div id="week-branches" style="display:flex;flex-direction:column;gap:16px;"></div>
   </section>
@@ -795,7 +801,7 @@ function applyReadOnlyLock(){
   // 뷰어·팀장·T.E — 설정 외 화면은 조회는 가능하지만 저장/추가/삭제/상태변경 등 입력은 모두 잠급니다.
   ["sa-save-btn","sa-add-row"].forEach(id=>{ const b=document.getElementById(id); if(b) b.disabled = true; });
   ["rc-save-btn","rc-add-row","rc-excel-btn"].forEach(id=>{ const b=document.getElementById(id); if(b) b.disabled = true; });
-  ["upload-openro-input","upload-advance-input","upload-pr-gunsan-input","upload-pr-mokpo-input","upload-pr-seosan-input"].forEach(id=>{ const b=document.getElementById(id); if(b) b.disabled = true; });
+  ["upload-openro-input","upload-advance-input","upload-pr-gunsan-input","upload-pr-mokpo-input","upload-pr-seosan-input","week-clear-btn"].forEach(id=>{ const b=document.getElementById(id); if(b) b.disabled = true; });
   lockContainer("sa-entry-body");
   lockContainer("rc-entry-body");
   document.querySelectorAll('table[id^="loaner-table-"]').forEach(t=> lockContainer(t.id));
@@ -2124,6 +2130,30 @@ function bindWeekView(){
     const el = document.getElementById("upload-pr-"+bid+"-input");
     if(el) el.addEventListener("change", (e)=>{ handlePrListUpload(e.target.files[0], bid); e.target.value=""; });
   });
+  const clearBtn = document.getElementById("week-clear-btn");
+  if(clearBtn) clearBtn.addEventListener("click", clearWeekMetrics);
+}
+async function clearWeekMetrics(){
+  if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
+  const w = weekRangeOf(weekAnchorDate || todayKST());
+  if(!window.confirm(`${w.start} ~ ${w.end} 주의 OPEN RO / PR리스트 / 선수금 값을 전 지점에서 지웁니다.\n계속하시겠습니까?`)) return;
+  const btn = document.getElementById("week-clear-btn");
+  if(btn){ btn.disabled = true; btn.textContent = "지우는 중…"; }
+  try{
+    for(const b of roster.branches){
+      const id = b.id+"_"+w.start;
+      const payload = { branch_slug:b.id, week_start:w.start, open_ro:null, pr_list:null, advance_amt:null };
+      await db.doc("week_metrics/"+id).set(payload);
+      weekMetricsDocs.set(id, { ...(weekMetricsDocs.get(id)||{}), ...payload });
+    }
+    renderWeekClose();
+    showToast(`${w.start} ~ ${w.end} 주의 업로드 값을 지웠습니다`);
+  }catch(err){
+    console.error(err);
+    showToast("지우는 중 오류가 발생했습니다");
+  }finally{
+    if(btn){ btn.disabled = false; btn.textContent = "선택된 주 업로드값 지우기"; }
+  }
 }
 
 /* ---- 주마감 표 구성: 그 달에 속한 월~일 주차들을 순서대로 계산 ---- */
