@@ -459,6 +459,18 @@
     </div>
     <div class="card" style="margin-top:16px;">
       <div class="section-head">
+        <h2>지점 비교 (회사보고용)</h2>
+        <span class="hint" id="week-compare-hint"></span>
+      </div>
+      <div class="field-row" style="margin-top:10px;">
+        <div class="field" style="min-width:auto;">
+          <button class="btn primary sm" id="week-compare-export-btn">엑셀로 내보내기</button>
+        </div>
+      </div>
+      <div class="table-wrap" style="margin-top:10px;"><table class="data" id="week-compare-table"></table></div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <div class="section-head">
         <h2>주간 자료 업로드</h2>
         <span class="hint">위에서 선택된(기준일) 주에 반영됩니다 — 업로드 전에 "이전 주/다음 주"로 해당 주를 먼저 선택하세요</span>
       </div>
@@ -1617,7 +1629,7 @@ function renderLoanerSummary(){
   const html = `
     <thead><tr>
       <th>지점</th><th>차량번호</th><th>상태</th><th>대여 RO번호</th><th>담당 SA</th><th>대여일</th>
-      <th class="right">누적일수</th><th>서류</th><th>면허 진위</th><th>DMS</th><th>팀장 확인</th>
+      <th class="right">누적일수</th><th>서류</th><th>면허 진위</th><th>DMS</th><th>팀장 확인</th><th>처리</th>
     </tr></thead>
     <tbody>
       ${rows.map(r=>`
@@ -1633,7 +1645,8 @@ function renderLoanerSummary(){
           ${checkCell(r,"license","면허 진위")}
           ${checkCell(r,"dms","DMS")}
           ${checkCell(r,"leader","팀장 확인")}
-        </tr>`).join("") || '<tr class="empty-row"><td colspan="11">등록된 로너카가 없습니다</td></tr>'}
+          <td class="center">${r._inUse ? `<button type="button" class="btn sm danger" data-return-doc="${esc(r._usage.docId)}" data-return-ro="${esc(r._usage.ro_no)}">반납완료</button>` : '<span class="muted">-</span>'}</td>
+        </tr>`).join("") || '<tr class="empty-row"><td colspan="12">등록된 로너카가 없습니다</td></tr>'}
     </tbody>`;
   wrap.innerHTML = html;
 
@@ -1642,6 +1655,36 @@ function renderLoanerSummary(){
       updateLoanerCheck(btn.dataset.doc, btn.dataset.ro, btn.dataset.field, btn.dataset.value);
     });
   });
+  wrap.querySelectorAll("[data-return-doc]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      returnLoanerCar(btn.dataset.returnDoc, btn.dataset.returnRo);
+    });
+  });
+  applyReadOnlyLock();
+}
+async function returnLoanerCar(docId, roNo){
+  if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
+  if(!window.confirm(`${roNo} 로너카를 반납 완료 처리할까요?`)) return;
+  try{
+    const snap = await db.doc("sa_days/"+docId).get();
+    if(!snap.exists){ showToast("데이터를 찾을 수 없습니다"); return; }
+    const data = snap.data();
+    const entries = (data.entries||[]).map(e=>({...e}));
+    const idx = entries.findIndex(e=>e.ro_no === roNo);
+    if(idx === -1){ showToast("해당 RO를 찾을 수 없습니다"); return; }
+    if(entries[idx].loaner_used === "O"){
+      entries[idx].loaner_used = "X";
+      if(!entries[idx].loaner_return_date) entries[idx].loaner_return_date = todayKST();
+    }
+    const payload = { ...data, entries, submitted_at: new Date().toISOString() };
+    await db.doc("sa_days/"+docId).set(payload);
+    saDocs.set(docId, payload);
+    showToast(`${roNo} 로너카가 반납 처리되었습니다`);
+    renderDashboard();
+  }catch(err){
+    console.error(err);
+    showToast("반납 처리 중 오류가 발생했습니다");
+  }
 }
 
 function renderBranchCards(viewDate, realToday){
@@ -2178,6 +2221,94 @@ function weeksOfMonth(anchorDateStr){
 function weekMetricsFor(branchId, weekStart){
   return weekMetricsDocs.get(branchId+"_"+weekStart) || {};
 }
+/* ---- 한 지점의 한 주(월~일) 지표를 계산 — 지점별 다주(週) 표, 지점비교 표, 엑셀 내보내기에서 공용으로 씀 ---- */
+function computeWeekMetricsRow(branchId, w, monthStart, today){
+  const target = targets[branchId] || DEFAULT_TARGETS[branchId] || 0;
+  const filterFn = d => d>=w.start && d<=w.end;
+  const sa = aggregateSA(branchId, null, filterFn);
+  let mergedEntries = [];
+  for(const doc of receptionDocs.values()){
+    if(doc.branch_slug !== branchId) continue;
+    if(!filterFn(doc.date)) continue;
+    mergedEntries = mergedEntries.concat(doc.entries||[]);
+  }
+  const intake = analyzeIntake(mergedEntries);
+
+  // 누계 매출: 이 달 1일 ~ (이 주의 일요일과 오늘 중 이른 날짜)
+  const cumEnd = w.end < today ? w.end : today;
+  const cumSA = (cumEnd >= monthStart) ? aggregateSA(branchId, null, d => d>=monthStart && d<=cumEnd) : { total_sales:0 };
+  const achieveRate = target>0 ? cumSA.total_sales/target : 0;
+
+  // 전주 대비 예약율 (전주 데이터가 현재 캐시된 월 범위 밖이면 "-")
+  const prevWeek = weekRangeOf(addDaysStr(w.start, -7));
+  let prevReserved = null;
+  if(currentMonthKey && (prevWeek.start.slice(0,7) === currentMonthKey || prevWeek.end.slice(0,7) === currentMonthKey)){
+    let prevEntries = [];
+    for(const doc of receptionDocs.values()){
+      if(doc.branch_slug !== branchId) continue;
+      if(doc.date < prevWeek.start || doc.date > prevWeek.end) continue;
+      prevEntries = prevEntries.concat(doc.entries||[]);
+    }
+    prevReserved = analyzeIntake(prevEntries).reserved_count;
+  }
+  const wowRate = (prevReserved!==null && prevReserved>0) ? (intake.reserved_count-prevReserved)/prevReserved : null;
+  const noshowRate = intake.noshow_count>0 ? intake.rebook_ok/intake.noshow_count : null;
+  const wm = weekMetricsFor(branchId, w.start);
+
+  return {
+    target, retail: sa.retail, bsi: sa.bsi, warranty: sa.warranty, insurance: sa.insurance,
+    cum_total_sales: cumSA.total_sales, achieveRate,
+    reserved_count: intake.reserved_count, checkin_count: intake.checkin_count, walkin_count: intake.walkin_count,
+    noshow_count: intake.noshow_count, rebook_ok: intake.rebook_ok, noshowRate, wowRate,
+    open_ro: wm.open_ro, pr_list: wm.pr_list, advance_amt: wm.advance_amt,
+  };
+}
+/* ---- 지점 비교(회사보고용) 표에서 공용으로 쓰는 지표 행 정의 ---- */
+const WEEK_COMPARE_METRICS = [
+  { label:"RETAIL", fmt: m=>fmtManwon(m.retail) },
+  { label:"BSI", fmt: m=>fmtManwon(m.bsi) },
+  { label:"WARRANTY", fmt: m=>fmtManwon(m.warranty) },
+  { label:"Insurance", fmt: m=>fmtManwon(m.insurance) },
+  { label:"누계매출", fmt: m=>fmtManwon(m.cum_total_sales) },
+  { label:"타겟", fmt: m=>fmtManwon(m.target) },
+  { label:"달성율", fmt: m=>fmtPct(m.achieveRate) },
+  { label:"예약", fmt: m=>m.reserved_count },
+  { label:"입고", fmt: m=>m.checkin_count },
+  { label:"비예약", fmt: m=>m.walkin_count },
+  { label:"노쇼", fmt: m=>m.noshow_count },
+  { label:"재예약성공", fmt: m=>m.rebook_ok },
+  { label:"노쇼이행율", fmt: m=>m.noshowRate===null?"-":fmtPct(m.noshowRate) },
+  { label:"전주대비예약율", fmt: m=>m.wowRate===null?"-":(m.wowRate>=0?"+":"")+fmtPct(m.wowRate) },
+  { label:"OPEN RO", fmt: m=>m.open_ro ?? "-" },
+  { label:"PR리스트", fmt: m=>m.pr_list ?? "-" },
+  { label:"선수금리스트", fmt: m=>m.advance_amt!=null ? fmtManwon(m.advance_amt) : "-" },
+];
+function renderWeekCompare(thisWeek, weekNo, metricsByBranch){
+  const wrap = document.getElementById("week-compare-table");
+  if(!wrap) return;
+  const hint = document.getElementById("week-compare-hint");
+  if(hint) hint.textContent = `${weekNo>0?weekNo+"주 · ":""}${thisWeek.start} ~ ${thisWeek.end} · 매출 단위: 만원`;
+  wrap.innerHTML = `
+    <thead><tr><th>구분</th>${roster.branches.map(b=>`<th class="right">${esc(b.name)}</th>`).join("")}</tr></thead>
+    <tbody>
+      ${WEEK_COMPARE_METRICS.map(row=>`
+        <tr><td>${esc(row.label)}</td>${roster.branches.map(b=>`<td class="right num">${row.fmt(metricsByBranch[b.id])}</td>`).join("")}</tr>`).join("")}
+    </tbody>`;
+}
+function exportWeekCompareExcel(thisWeek, weekNo, metricsByBranch){
+  if(typeof XLSX === "undefined"){ showToast("엑셀 내보내기 기능을 사용할 수 없습니다"); return; }
+  const aoa = [
+    [`${weekNo>0?weekNo+"주":""} (${thisWeek.start} ~ ${thisWeek.end}) 지점 비교 · 매출 단위: 만원`],
+    ["구분", ...roster.branches.map(b=>b.name)],
+    ...WEEK_COMPARE_METRICS.map(row=> [row.label, ...roster.branches.map(b=>row.fmt(metricsByBranch[b.id]))]),
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = [{wch:16}, ...roster.branches.map(()=>({wch:12}))];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "지점비교");
+  const fname = `주간지점비교_${weekNo>0?weekNo+"주_":""}${thisWeek.start}_${thisWeek.end}.xlsx`;
+  XLSX.writeFile(wb, fname);
+}
 function renderWeekClose(){
   const wrap = document.getElementById("week-branches");
   if(!wrap) return;
@@ -2190,63 +2321,33 @@ function renderWeekClose(){
   if(hint) hint.textContent = `${ym} · 화면 기준 주: ${thisWeek.start} ~ ${thisWeek.end} (월~일)`;
   const weeks = weeksOfMonth(weekAnchorDate);
   const today = todayKST();
+  const weekNo = weeks.findIndex(w=>w.start===thisWeek.start) + 1;
 
   wrap.innerHTML = roster.branches.map(b=>{
-    const target = targets[b.id] || DEFAULT_TARGETS[b.id] || 0;
     const rows = weeks.map((w, idx)=>{
-      const filterFn = d => d>=w.start && d<=w.end;
-      const sa = aggregateSA(b.id, null, filterFn);
-      let mergedEntries = [];
-      for(const doc of receptionDocs.values()){
-        if(doc.branch_slug !== b.id) continue;
-        if(!filterFn(doc.date)) continue;
-        mergedEntries = mergedEntries.concat(doc.entries||[]);
-      }
-      const intake = analyzeIntake(mergedEntries);
-
-      // 누계 매출: 이 달 1일 ~ (이 주의 일요일과 오늘 중 이른 날짜)
-      const cumEnd = w.end < today ? w.end : today;
-      const cumSA = (cumEnd >= monthStart) ? aggregateSA(b.id, null, d => d>=monthStart && d<=cumEnd) : { total_sales:0 };
-      const achieveRate = target>0 ? cumSA.total_sales/target : 0;
-
-      // 전주 대비 예약율 (전주 데이터가 현재 캐시된 월 범위 밖이면 "-")
-      const prevWeek = weekRangeOf(addDaysStr(w.start, -7));
-      let prevReserved = null;
-      if(currentMonthKey && (prevWeek.start.slice(0,7) === currentMonthKey || prevWeek.end.slice(0,7) === currentMonthKey)){
-        let prevEntries = [];
-        for(const doc of receptionDocs.values()){
-          if(doc.branch_slug !== b.id) continue;
-          if(doc.date < prevWeek.start || doc.date > prevWeek.end) continue;
-          prevEntries = prevEntries.concat(doc.entries||[]);
-        }
-        prevReserved = analyzeIntake(prevEntries).reserved_count;
-      }
-      const wowRate = (prevReserved!==null && prevReserved>0) ? (intake.reserved_count-prevReserved)/prevReserved : null;
-      const noshowRate = intake.noshow_count>0 ? intake.rebook_ok/intake.noshow_count : null;
-
-      const wm = weekMetricsFor(b.id, w.start);
+      const m = computeWeekMetricsRow(b.id, w, monthStart, today);
       const isCurrentWeek = (w.start === thisWeek.start);
       return `
         <tr class="${isCurrentWeek?'week-row-current':''}">
           <td>${idx+1}주</td>
           <td class="hint">${w.start.slice(5)}~${w.end.slice(5)}</td>
-          <td class="right num">${fmtManwon(sa.retail)}</td>
-          <td class="right num">${fmtManwon(sa.bsi)}</td>
-          <td class="right num">${fmtManwon(sa.warranty)}</td>
-          <td class="right num">${fmtManwon(sa.insurance)}</td>
-          <td class="right num">${fmtManwon(cumSA.total_sales)}</td>
-          <td class="right num">${fmtManwon(target)}</td>
-          <td class="right num">${fmtPct(achieveRate)}</td>
-          <td class="right num">${intake.reserved_count}</td>
-          <td class="right num">${intake.checkin_count}</td>
-          <td class="right num">${intake.walkin_count}</td>
-          <td class="right num">${intake.noshow_count}</td>
-          <td class="right num">${intake.rebook_ok}</td>
-          <td class="right num">${noshowRate===null?"-":fmtPct(noshowRate)}</td>
-          <td class="right num">${wowRate===null?"-":(wowRate>=0?"+":"")+fmtPct(wowRate)}</td>
-          <td class="right num">${wm.open_ro ?? "-"}</td>
-          <td class="right num">${wm.pr_list ?? "-"}</td>
-          <td class="right num">${wm.advance_amt!=null ? fmtManwon(wm.advance_amt) : "-"}</td>
+          <td class="right num">${fmtManwon(m.retail)}</td>
+          <td class="right num">${fmtManwon(m.bsi)}</td>
+          <td class="right num">${fmtManwon(m.warranty)}</td>
+          <td class="right num">${fmtManwon(m.insurance)}</td>
+          <td class="right num">${fmtManwon(m.cum_total_sales)}</td>
+          <td class="right num">${fmtManwon(m.target)}</td>
+          <td class="right num">${fmtPct(m.achieveRate)}</td>
+          <td class="right num">${m.reserved_count}</td>
+          <td class="right num">${m.checkin_count}</td>
+          <td class="right num">${m.walkin_count}</td>
+          <td class="right num">${m.noshow_count}</td>
+          <td class="right num">${m.rebook_ok}</td>
+          <td class="right num">${m.noshowRate===null?"-":fmtPct(m.noshowRate)}</td>
+          <td class="right num">${m.wowRate===null?"-":(m.wowRate>=0?"+":"")+fmtPct(m.wowRate)}</td>
+          <td class="right num">${m.open_ro ?? "-"}</td>
+          <td class="right num">${m.pr_list ?? "-"}</td>
+          <td class="right num">${m.advance_amt!=null ? fmtManwon(m.advance_amt) : "-"}</td>
         </tr>`;
     }).join("");
 
@@ -2264,6 +2365,13 @@ function renderWeekClose(){
         </table></div>
       </div>`;
   }).join("");
+
+  const metricsByBranch = {};
+  roster.branches.forEach(b=>{ metricsByBranch[b.id] = computeWeekMetricsRow(b.id, thisWeek, monthStart, today); });
+  renderWeekCompare(thisWeek, weekNo, metricsByBranch);
+  const exportBtn = document.getElementById("week-compare-export-btn");
+  if(exportBtn) exportBtn.onclick = ()=> exportWeekCompareExcel(thisWeek, weekNo, metricsByBranch);
+  applyReadOnlyLock();
 }
 
 /* ---- 주마감 업로드: OPEN RO Clearance Report / PR 리스트 / 선수금 리스트 ---- */
