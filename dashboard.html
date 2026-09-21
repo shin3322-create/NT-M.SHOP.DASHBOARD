@@ -2095,8 +2095,9 @@ function analyzeIntake(entries){
   const reserved = valid.filter(e => e.status!=="예약취소" && e.status!=="비예약");
   const walkin = valid.filter(e => e.status==="비예약");
   const checkedIn = reserved.filter(e => e.checkin_yn==="O").length;
-  const noshow = reserved.filter(e => e.checkin_yn==="X").length;
-  const rebookOk = valid.filter(e => e.rebook==="O").length;
+  const noshowEntries = reserved.filter(e => e.checkin_yn==="X");
+  const noshow = noshowEntries.length;
+  const rebookOk = noshowEntries.filter(e => e.rebook==="O").length; // 노쇼난 차량 중 재예약 O로 이어진 건수만 집계
   const svcCounts = {};
   RC_SERVICE_TYPES.forEach(t=> svcCounts[t]=0);
   reserved.forEach(e=>{ if(e.svc_type in svcCounts) svcCounts[e.svc_type]++; });
