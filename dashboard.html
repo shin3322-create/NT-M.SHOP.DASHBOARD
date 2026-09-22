@@ -819,7 +819,8 @@ function applyReadOnlyLock(){
   document.querySelectorAll('table[id^="loaner-table-"]').forEach(t=> lockContainer(t.id));
   document.querySelectorAll('[data-loaner-add],[data-loaner-save]').forEach(b=> b.disabled = true);
   lockContainer("table-loaner");
-  lockContainer("staying-wrap");
+  // T.E는 예외적으로 "숙박 차량" 섹션(차량번호/부품도착일/수리내용/상태버튼)만 입력 가능
+  if(myIdentity?.role !== "te") lockContainer("staying-wrap");
   lockContainer("table-return");
 }
 function applyIdentityRestrictions(){
