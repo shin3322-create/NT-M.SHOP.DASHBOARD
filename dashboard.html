@@ -636,6 +636,38 @@
 
     <div id="settings-body" hidden style="display:flex;flex-direction:column;gap:22px;">
       <div class="card">
+        <div class="section-head"><h2>접속자 현황</h2><span class="hint">현재 접속 중인 사용자와, 선택한 주(월~일)에 접속한 누적 인원을 확인합니다</span></div>
+        <div class="settings-block" id="settings-visitors" style="margin-top:12px;">
+          <div class="field-row" style="align-items:flex-end;">
+            <div class="field" style="min-width:auto;">
+              <label>현재 접속자</label>
+              <div id="online-count" style="font-size:22px;font-weight:800;">-</div>
+            </div>
+            <div class="field" style="flex:1;min-width:200px;">
+              <label>&nbsp;</label>
+              <div id="online-list" class="hint">불러오는 중…</div>
+            </div>
+          </div>
+          <div class="field-row" style="margin-top:16px;align-items:flex-end;">
+            <div class="field">
+              <label for="visit-week-date">조회할 주 (아무 날짜나 선택)</label>
+              <input type="date" id="visit-week-date">
+            </div>
+            <div class="field" style="min-width:auto;"><button class="btn sm" id="visit-week-btn">조회</button></div>
+            <div class="field" style="min-width:auto;">
+              <label>&nbsp;</label>
+              <span id="visit-week-range" class="hint"></span>
+            </div>
+            <div class="field" style="min-width:auto;">
+              <label>주간 누적 접속자</label>
+              <div id="visit-week-count" style="font-size:22px;font-weight:800;">-</div>
+            </div>
+          </div>
+          <div class="table-wrap" style="margin-top:10px;"><table class="data" id="visit-week-table"></table></div>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="section-head"><h2>직원 승인 / 역할 관리</h2><span class="hint">가입 신청한 직원을 승인하고 역할·지점·담당자를 지정합니다</span></div>
         <div class="settings-block" id="settings-profiles" style="margin-top:12px;"></div>
       </div>
@@ -772,6 +804,7 @@ let weekMetricsDocs = new Map(); // id -> data   (OPEN RO / PR리스트 / 선수
 let unsubs = [];
 let currentView = "dashboard";
 let dashboardViewDate = null; // null = 오늘 기준, 값이 있으면 그 날짜의 매출만 대시보드 카드에 표시
+let presenceChannel = null;   // 현재 접속자(실시간 presence) 채널
 let supabaseClient = null;
 let myProfile = null;     // row from `profiles` table for the signed-in user
 let myIdentity = null;    // { role: 'admin'|'sa'|'reception'|'viewer', personId: string|null }
@@ -819,8 +852,8 @@ function applyReadOnlyLock(){
   document.querySelectorAll('table[id^="loaner-table-"]').forEach(t=> lockContainer(t.id));
   document.querySelectorAll('[data-loaner-add],[data-loaner-save]').forEach(b=> b.disabled = true);
   lockContainer("table-loaner");
-  // T.E는 예외적으로 "숙박 차량" 섹션(차량번호/부품도착일/수리내용/상태버튼)만 입력 가능
-  if(myIdentity?.role !== "te") lockContainer("staying-wrap");
+  // T.E·팀장은 예외적으로 "숙박 차량" 섹션(차량번호/부품도착일/수리내용/상태버튼)만 입력 가능
+  if(!["te","team_lead"].includes(myIdentity?.role)) lockContainer("staying-wrap");
   lockContainer("table-return");
 }
 function applyIdentityRestrictions(){
@@ -1034,6 +1067,8 @@ async function init(){
   renderAll();
   applyIdentityRestrictions();
   scheduleAutoReload();
+  initPresence();
+  logVisit();
 }
 
 /* ---------------------------------------------------------------- */
@@ -2950,6 +2985,9 @@ function bindSettingsForm(){
   document.getElementById("cleanup-btn").addEventListener("click", deleteOldData);
   document.getElementById("fix-loaner-btn").addEventListener("click", fixLoanerMismatches);
   document.getElementById("loaner-history-btn").addEventListener("click", loadLoanerHistory);
+  document.getElementById("visit-week-btn").addEventListener("click", ()=>{
+    loadVisitWeek(document.getElementById("visit-week-date").value);
+  });
 }
 async function loadLoanerHistory(){
   if(!supabaseClient){ showToast("저장 기능을 사용할 수 없습니다"); return; }
@@ -3063,6 +3101,10 @@ function renderSettings(){
   document.getElementById("settings-gate").hidden = isAdmin;
   document.getElementById("settings-body").hidden = !isAdmin;
   if(!isAdmin) return;
+  renderOnlinePanel();
+  const visitDateInput = document.getElementById("visit-week-date");
+  if(visitDateInput && !visitDateInput.value) visitDateInput.value = todayKST();
+  loadVisitWeek(visitDateInput ? visitDateInput.value : todayKST());
   document.getElementById("settings-targets").innerHTML = roster.branches.map(b=>`
     <div class="field-row">
       <div class="field" style="min-width:80px;"><label>${esc(b.name)}</label></div>
@@ -3163,6 +3205,80 @@ async function renderProfilesPanel(){
       }
     });
   });
+}
+
+/* ---------------------------------------------------------------- */
+/* 접속자 현황 — 현재 접속자(실시간 presence) + 주간 누적 접속자(visit_log)  */
+/* ---------------------------------------------------------------- */
+function initPresence(){
+  if(!supabaseClient || !myProfile) return;
+  presenceChannel = supabaseClient.channel("online-users", { config:{ presence:{ key: myProfile.id } } });
+  presenceChannel.on("presence", { event:"sync" }, ()=>{ renderOnlinePanel(); });
+  presenceChannel.subscribe(async (status)=>{
+    if(status === "SUBSCRIBED"){
+      try{
+        await presenceChannel.track({
+          name: myProfile.display_name || myProfile.email || "이름없음",
+          role: myIdentity?.role || "",
+          branch: myIdentity?.branchSlug || "",
+          online_at: new Date().toISOString(),
+        });
+      }catch(err){ console.error(err); }
+    }
+  });
+}
+function renderOnlinePanel(){
+  const countEl = document.getElementById("online-count");
+  const listEl = document.getElementById("online-list");
+  if(!countEl || !listEl) return;
+  if(!presenceChannel){ countEl.textContent = "-"; listEl.textContent = ""; return; }
+  const state = presenceChannel.presenceState();
+  const users = Object.values(state).map(arr=> arr[0]).filter(Boolean);
+  users.sort((a,b)=> (a.name||"").localeCompare(b.name||""));
+  countEl.textContent = users.length + "명";
+  listEl.textContent = users.map(u=> `${u.name}(${ROLE_LABELS[u.role]||u.role||"-"})`).join(", ") || "현재 접속 중인 사용자가 없습니다";
+}
+async function logVisit(){
+  if(!supabaseClient || !myProfile || !myIdentity) return;
+  try{
+    const date = todayKST();
+    const id = myProfile.id + "_" + date;
+    await supabaseClient.from("visit_log").upsert({
+      id, user_id: myProfile.id, email: myProfile.email, display_name: myProfile.display_name || myProfile.email || "",
+      role: myIdentity.role, branch_slug: myIdentity.branchSlug, visit_date: date,
+      last_seen: new Date().toISOString(),
+    });
+  }catch(err){ console.error(err); }
+}
+async function loadVisitWeek(anchorDate){
+  const rangeEl = document.getElementById("visit-week-range");
+  const countEl = document.getElementById("visit-week-count");
+  const tableEl = document.getElementById("visit-week-table");
+  if(!rangeEl || !countEl || !tableEl || !supabaseClient) return;
+  const w = weekRangeOf(anchorDate || todayKST());
+  rangeEl.textContent = `${w.start} ~ ${w.end}`;
+  countEl.textContent = "불러오는 중…";
+  tableEl.innerHTML = "";
+  try{
+    const { data, error } = await supabaseClient.from("visit_log").select("*").gte("visit_date", w.start).lte("visit_date", w.end);
+    if(error) throw error;
+    const byUser = new Map();
+    (data||[]).forEach(r=>{
+      if(!byUser.has(r.user_id)) byUser.set(r.user_id, { name: r.display_name || r.email || "(이름 없음)", role: r.role, days: new Set() });
+      byUser.get(r.user_id).days.add(r.visit_date);
+    });
+    const rows = Array.from(byUser.values()).sort((a,b)=> b.days.size - a.days.size || a.name.localeCompare(b.name));
+    countEl.textContent = rows.length + "명";
+    tableEl.innerHTML = `
+      <thead><tr><th>이름</th><th>역할</th><th class="right">접속일수</th></tr></thead>
+      <tbody>${rows.map(r=>`
+        <tr><td>${esc(r.name)}</td><td>${esc(ROLE_LABELS[r.role]||r.role||"")}</td><td class="num">${r.days.size}일</td></tr>
+      `).join("") || '<tr class="empty-row"><td colspan="3">해당 주에 접속 기록이 없습니다</td></tr>'}</tbody>`;
+  }catch(err){
+    console.error(err);
+    countEl.textContent = "-";
+    tableEl.innerHTML = '<tr class="empty-row"><td>불러오지 못했습니다</td></tr>';
+  }
 }
 
 /* ---------------------------------------------------------------- */
