@@ -858,6 +858,8 @@ function applyReadOnlyLock(){
   // T.E·팀장은 예외적으로 "숙박 차량" 섹션(차량번호/부품도착일/수리내용/상태버튼)만 입력 가능
   if(!["te","team_lead"].includes(myIdentity?.role)) lockContainer("staying-wrap");
   lockContainer("table-return");
+  // "바로가기"는 데이터를 바꾸지 않는 화면 이동 버튼이므로 읽기 전용 역할에서도 눌리게 둡니다.
+  document.querySelectorAll('#table-return [data-goto-return]').forEach(b=> b.disabled = false);
 }
 function applyIdentityRestrictions(){
   const label = document.getElementById("identity-label");
@@ -902,6 +904,24 @@ function esc(s){
 function md(dateStr){
   if(!dateStr) return "";
   return String(dateStr).replace(/\b\d{4}-(\d{2}-\d{2})\b/g, "$1");
+}
+// "MM-DD" 텍스트 입력을 실제 저장용 "YYYY-MM-DD"로 되돌리는 헬퍼. 부품 도착일자/출고 예정일처럼
+// 가까운 날짜를 다루는 칸에서, 화면엔 연도를 안 보여주면서도 저장은 연도 포함으로 하기 위해 씁니다.
+// 기준일(오늘) 앞뒤로 연도를 하나씩 대입해보고, 오늘과 가장 가까워지는 연도를 선택합니다
+// (예: 12월에 01-05를 입력하면 내년 01-05로, 1월에 12-25를 입력하면 작년 12-25로 인식).
+function inferYearForMD(mmdd, refDateStr){
+  const ref = refDateStr || todayKST();
+  const refYear = Number(ref.slice(0,4));
+  const refTime = new Date(ref+"T00:00:00Z").getTime();
+  let best = `${refYear}-${mmdd}`, bestDiff = Infinity;
+  [refYear-1, refYear, refYear+1].forEach(y=>{
+    const cand = `${y}-${mmdd}`;
+    const t = new Date(cand+"T00:00:00Z").getTime();
+    if(isNaN(t)) return;
+    const diff = Math.abs(t - refTime);
+    if(diff < bestDiff){ bestDiff = diff; best = cand; }
+  });
+  return best;
 }
 function fmtWon(n){ n = Number(n)||0; return n.toLocaleString("ko-KR") + "원"; }
 function fmtManwon(n){ n = Number(n)||0; return Math.round(n/10000).toLocaleString("ko-KR"); }
@@ -1405,7 +1425,8 @@ function collectReturnVehicles(){
     for(const e of (doc.entries||[])){
       if(e.return_date){
         rows.push({ docId, ro_no:e.ro_no, return_date:e.return_date, return_reason:e.return_reason||"",
-                    return_status:e.return_status||"", branch:doc.branch_slug, sa_name:doc.sa_name });
+                    return_status:e.return_status||"", branch:doc.branch_slug, sa_name:doc.sa_name,
+                    sa_id:doc.sa_id, date:doc.date });
       }
     }
   }
@@ -1416,14 +1437,14 @@ function collectReturnVehicles(){
 function renderReturnTable(today){
   const rows = collectReturnVehicles();
   const html = `
-    <thead><tr><th>RO 번호</th><th>지점</th><th>담당 SA</th><th>재입고(고객연락) 일자</th><th>연락사유</th><th>상태</th></tr></thead>
+    <thead><tr><th>RO 번호</th><th>지점</th><th>담당 SA</th><th>재입고(고객연락) 일자</th><th>연락사유</th><th>상태</th><th style="width:70px;"></th></tr></thead>
     <tbody>
       ${rows.map(r=>{
         let dateStyle;
         if(r.return_date === today){ dateStyle="color:var(--warning);font-weight:900;"; }
         else if(r.return_date < today){ dateStyle="color:var(--critical);font-weight:900;"; }
         else { dateStyle="color:var(--text-muted);"; }
-        return `<tr data-doc="${esc(r.docId)}" data-ro="${esc(r.ro_no)}">
+        return `<tr data-doc="${esc(r.docId)}" data-ro="${esc(r.ro_no)}" data-sa-id="${esc(r.sa_id||"")}" data-sa-date="${esc(r.date||"")}">
           <td>${esc(r.ro_no)}</td>
           <td><span class="pill ${r.branch}">${esc(branchName(r.branch))}</span></td>
           <td>${esc(r.sa_name)}</td>
@@ -1434,11 +1455,19 @@ function renderReturnTable(today){
               ${RETURN_STATUS_BUTTONS.map(s=>`<button type="button" class="stay-status-btn ${r.return_status===s.key?'active':''}" data-status="${esc(s.key)}">${esc(s.label)}</button>`).join("")}
             </div>
           </td>
+          <td><button class="btn ghost sm" data-goto-return>바로가기</button></td>
         </tr>`;
-      }).join("") || '<tr class="empty-row"><td colspan="6">재입고 예정 차량이 없습니다</td></tr>'}
+      }).join("") || '<tr class="empty-row"><td colspan="7">재입고 예정 차량이 없습니다</td></tr>'}
     </tbody>`;
   const wrap = document.getElementById("table-return");
   wrap.innerHTML = html;
+  wrap.querySelectorAll("[data-goto-return]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const tr = btn.closest("tr");
+      if(!tr.dataset.saId){ showToast("담당 SA 정보를 찾을 수 없습니다"); return; }
+      goToInput("sa", tr.dataset.saId, tr.dataset.saDate);
+    });
+  });
   wrap.querySelectorAll(".stay-status-btn").forEach(btn=>{
     btn.addEventListener("click", ()=>{
       const tr = btn.closest("tr");
@@ -1530,9 +1559,9 @@ function renderStayingTable(){
                 <td class="num">${esc(md(r.date))}</td>
                 <td>${esc(r.svc_type)}</td>
                 <td><input type="text" class="stay-detail-input" data-field="stay_car_no" value="${esc(r.stay_car_no)}" placeholder="12가3456"></td>
-                <td><input type="date" class="stay-detail-input" data-field="stay_parts_eta" value="${esc(r.stay_parts_eta)}"></td>
+                <td><input type="text" class="stay-detail-input" data-field="stay_parts_eta" value="${esc(md(r.stay_parts_eta))}" placeholder="MM-DD" maxlength="5" title="${esc(r.stay_parts_eta)}"></td>
                 <td><input type="text" class="stay-detail-input" data-field="stay_repair_note" value="${esc(r.stay_repair_note)}" placeholder="수리내용"></td>
-                <td><input type="date" class="stay-detail-input" data-field="stay_checkout_eta" value="${esc(r.stay_checkout_eta)}"></td>
+                <td><input type="text" class="stay-detail-input" data-field="stay_checkout_eta" value="${esc(md(r.stay_checkout_eta))}" placeholder="MM-DD" maxlength="5" title="${esc(r.stay_checkout_eta)}"></td>
                 <td>
                   <div class="stay-status-group">
                     ${STAY_STATUS_BUTTONS.map(s=>`<button type="button" class="stay-status-btn ${r.stay_reason===s.key?'active':''}" data-status="${esc(s.key)}">${esc(s.label)}</button>`).join("")}
@@ -1558,8 +1587,22 @@ function renderStayingTable(){
   });
   applyReadOnlyLock();
 }
+const STAY_MD_FIELDS = ["stay_parts_eta","stay_checkout_eta"]; // 화면엔 MM-DD만 입력/표시, 저장은 YYYY-MM-DD
 async function updateStayDetail(docId, roNo, field, value){
   if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
+  let toSave = value;
+  if(STAY_MD_FIELDS.includes(field)){
+    const v = String(value||"").trim();
+    if(v === ""){
+      toSave = "";
+    } else if(/^\d{2}-\d{2}$/.test(v)){
+      toSave = inferYearForMD(v, todayKST());
+    } else {
+      showToast("날짜는 MM-DD 형식으로 입력해주세요 (예: 09-30)");
+      renderStayingTable();
+      return;
+    }
+  }
   try{
     const snap = await db.doc("sa_days/"+docId).get();
     if(!snap.exists){ showToast("데이터를 찾을 수 없습니다"); return; }
@@ -1567,7 +1610,7 @@ async function updateStayDetail(docId, roNo, field, value){
     const entries = (data.entries||[]).map(e=>({...e}));
     const idx = entries.findIndex(e=>e.ro_no === roNo);
     if(idx === -1){ showToast("해당 RO를 찾을 수 없습니다"); return; }
-    entries[idx][field] = value;
+    entries[idx][field] = toSave;
     const payload = { ...data, entries, submitted_at: new Date().toISOString() };
     await db.doc("sa_days/"+docId).set(payload);
     saDocs.set(docId, payload);
@@ -2685,7 +2728,7 @@ function renderSAEntryTable(){
           ${STAY_REASONS.map(r=>`<option value="${r}" ${e.stay_reason===r?"selected":""}>${r}</option>`).join("")}
         </select>
       </td>
-      <td><input type="date" data-f="return_date" value="${esc(e.return_date||"")}"></td>
+      <td><input type="text" data-f="return_date" value="${esc(md(e.return_date||""))}" placeholder="MM-DD" maxlength="5" title="${esc(e.return_date||"")}"></td>
       <td>
         <select data-f="return_reason" ${!e.return_date?'disabled':''}>
           <option value="">-</option>
@@ -2744,6 +2787,25 @@ function onSAFieldChange(ev){
   const idx = Number(tr.dataset.idx);
   const field = ev.target.dataset.f;
   let value = ev.target.value;
+  if(field === "return_date"){
+    if(ev.type === "input"){
+      // 타이핑 도중(input)에는 형식 검증 없이 그대로 반영하고, 입력을 마치고 포커스를 벗어날 때(change)
+      // MM-DD → YYYY-MM-DD 변환/검증을 수행합니다.
+      saEntries[idx][field] = value;
+      return;
+    }
+    const v = String(value||"").trim();
+    if(v === ""){
+      value = "";
+    }else if(/^\d{2}-\d{2}$/.test(v)){
+      const ref = document.getElementById("sa-date")?.value || todayKST();
+      value = inferYearForMD(v, ref);
+    }else{
+      showToast("날짜는 MM-DD 형식으로 입력해주세요 (예: 09-30)");
+      renderSAEntryTable();
+      return;
+    }
+  }
   // 입고 시간은 로직으로 바꾸지 않고 SA가 입력한 값 그대로 저장합니다.
   saEntries[idx][field] = value;
   if(field === "svc_type"){
@@ -2754,7 +2816,7 @@ function onSAFieldChange(ev){
     }
   }
   if(field === "return_date"){
-    if(!ev.target.value) saEntries[idx].return_reason = "";
+    if(!value) saEntries[idx].return_reason = "";
     renderSAEntryTable();
     return;
   }
@@ -2788,6 +2850,8 @@ async function saveSAEntry(){
       if(e.loaner_used === "O" && !e.loaner_return_date) e.loaner_return_date = todayKST();
       e.loaner_used = "X";
     }
+    // 포커스 아웃 없이 저장 버튼을 눌렀을 때를 대비한 안전장치: MM-DD로 남아있으면 YYYY-MM-DD로 변환
+    if(/^\d{2}-\d{2}$/.test(e.return_date||"")) e.return_date = inferYearForMD(e.return_date, date);
   });
   if(cleaned.length !== saEntries.length){ saEntries = cleaned; renderSAEntryTable(); }
   const p = roster.sa.find(p=>p.id===personId);
@@ -2890,7 +2954,7 @@ function renderRCEntryTable(){
       </td>
       <td><input type="text" list="cancel-reason-list" data-f="cancel_reason" value="${esc(e.cancel_reason)}" placeholder="-" ${e.checkin_yn!=='X'?'disabled':''}></td>
       <td><select data-f="rebook"><option value="">-</option><option value="O" ${e.rebook==='O'?'selected':''}>O</option><option value="X" ${e.rebook==='X'?'selected':''}>X</option></select></td>
-      <td><input type="date" data-f="rebook_dt" value="${esc(e.rebook_dt||"")}" ${e.rebook!=='O'?'disabled':''}></td>
+      <td><input type="text" data-f="rebook_dt" value="${esc(md(e.rebook_dt||""))}" placeholder="MM-DD" maxlength="5" title="${esc(e.rebook_dt||"")}" ${e.rebook!=='O'?'disabled':''}></td>
       <td><button class="btn icon danger sm" data-del="${i}" title="삭제">✕</button></td>
     </tr>`).join("");
 
@@ -2919,9 +2983,27 @@ function onRCFieldChange(ev){
   const tr = ev.target.closest("tr");
   const idx = Number(tr.dataset.idx);
   const field = ev.target.dataset.f;
-  rcEntries[idx][field] = ev.target.value;
+  let value = ev.target.value;
+  if(field === "rebook_dt"){
+    if(ev.type === "input"){
+      rcEntries[idx][field] = value;
+      return;
+    }
+    const v = String(value||"").trim();
+    if(v === ""){
+      value = "";
+    }else if(/^\d{2}-\d{2}$/.test(v)){
+      const ref = document.getElementById("rc-date")?.value || todayKST();
+      value = inferYearForMD(v, ref);
+    }else{
+      showToast("날짜는 MM-DD 형식으로 입력해주세요 (예: 09-30)");
+      renderRCEntryTable();
+      return;
+    }
+  }
+  rcEntries[idx][field] = value;
   if(field === "rebook"){
-    if(ev.target.value !== "O") rcEntries[idx].rebook_dt = "";
+    if(value !== "O") rcEntries[idx].rebook_dt = "";
     renderRCEntryTable();
     return;
   }
@@ -2945,6 +3027,10 @@ async function saveRCEntry(){
   if(!personId || !date){ showToast("리셉션 매니저와 일자를 선택해 주세요"); return; }
   if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
   const cleaned = rcEntries.filter(e=>e.customer || e.car_no || e.resv_no);
+  cleaned.forEach(e=>{
+    // 포커스 아웃 없이 저장 버튼을 눌렀을 때를 대비한 안전장치: MM-DD로 남아있으면 YYYY-MM-DD로 변환
+    if(/^\d{2}-\d{2}$/.test(e.rebook_dt||"")) e.rebook_dt = inferYearForMD(e.rebook_dt, date);
+  });
   if(cleaned.length !== rcEntries.length){ rcEntries = cleaned; renderRCEntryTable(); }
   const p = roster.reception.find(p=>p.id===personId);
   const id = rcDocId(personId, date);
