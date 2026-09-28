@@ -897,6 +897,12 @@ function esc(s){
   if(s === null || s === undefined) return "";
   return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
+// 화면에 날짜를 "MM-DD"로만 표시(연도 생략)하기 위한 헬퍼. 저장되는 값(기록)은 그대로 YYYY-MM-DD를 유지하고,
+// 화면에 텍스트로 보여줄 때만 이 함수를 거칩니다. "YYYY-MM-DD ~ YYYY-MM-DD" 같은 범위 문자열도 처리합니다.
+function md(dateStr){
+  if(!dateStr) return "";
+  return String(dateStr).replace(/\b\d{4}-(\d{2}-\d{2})\b/g, "$1");
+}
 function fmtWon(n){ n = Number(n)||0; return n.toLocaleString("ko-KR") + "원"; }
 function fmtManwon(n){ n = Number(n)||0; return Math.round(n/10000).toLocaleString("ko-KR"); }
 function fmtPct(x){ if(!isFinite(x)) return "0%"; return (x*100).toFixed(1) + "%"; }
@@ -1354,7 +1360,7 @@ function renderInputIssues(){
           <td>${r.kind==="sa"?"어드바이저":"리셉션"}</td>
           <td><span class="pill ${r.branch}">${esc(branchName(r.branch))}</span></td>
           <td>${esc(r.person||"")}</td>
-          <td class="num">${esc(r.date)}</td>
+          <td class="num">${esc(md(r.date))}</td>
           <td>${esc(r.ref||"")}</td>
           <td style="color:var(--critical);font-weight:700;">${esc(r.msg)}</td>
           <td><button class="btn ghost sm" data-goto>바로가기</button></td>
@@ -1421,7 +1427,7 @@ function renderReturnTable(today){
           <td>${esc(r.ro_no)}</td>
           <td><span class="pill ${r.branch}">${esc(branchName(r.branch))}</span></td>
           <td>${esc(r.sa_name)}</td>
-          <td class="num" style="${dateStyle}">${esc(r.return_date)}</td>
+          <td class="num" style="${dateStyle}">${esc(md(r.return_date))}</td>
           <td>${esc(r.return_reason)}</td>
           <td>
             <div class="stay-status-group">
@@ -1521,7 +1527,7 @@ function renderStayingTable(){
               <tr data-doc="${esc(r.docId)}" data-ro="${esc(r.ro_no)}">
                 <td>${esc(r.ro_no)}</td>
                 <td>${esc(r.sa_name)}</td>
-                <td class="num">${esc(r.date)}</td>
+                <td class="num">${esc(md(r.date))}</td>
                 <td>${esc(r.svc_type)}</td>
                 <td><input type="text" class="stay-detail-input" data-field="stay_car_no" value="${esc(r.stay_car_no)}" placeholder="12가3456"></td>
                 <td><input type="date" class="stay-detail-input" data-field="stay_parts_eta" value="${esc(r.stay_parts_eta)}"></td>
@@ -1680,7 +1686,7 @@ function renderLoanerSummary(){
           <td style="${r._inUse?'color:var(--warning);font-weight:900;':'color:var(--text-muted);'}">${r._inUse?'대여중':'대기중'}</td>
           <td class="num">${esc(r._usage ? r._usage.ro_no : "")}</td>
           <td>${esc(r._usage ? r._usage.sa_name : "")}</td>
-          <td class="num">${esc(r._usage ? r._usage.date : "")}</td>
+          <td class="num">${esc(r._usage ? md(r._usage.date) : "")}</td>
           <td class="right num">${r._inUse ? r._usage.days + "일" : ""}</td>
           ${checkCell(r,"doc","서류")}
           ${checkCell(r,"license","면허 진위")}
@@ -1809,7 +1815,7 @@ function renderSATable(today){
     const t = aggregateSA(p.branch, p.id, d => d===today);
     return { p, mtd, t };
   }).sort((a,b)=> b.mtd.total_sales - a.mtd.total_sales);
-  document.getElementById("sa-table-hint").textContent = monthRangeOf(today).ym + " 누계 기준 정렬, 단위 만원";
+  document.getElementById("sa-table-hint").textContent = monthRangeOf(today).ym.slice(5) + "월 누계 기준 정렬, 단위 만원";
   const html = `
     <thead><tr><th>SA</th><th>지점</th><th class="right">RETAIL</th><th class="right">BSI</th><th class="right">W 보증</th><th class="right">이달 합계</th><th class="right">오늘</th></tr></thead>
     <tbody>
@@ -1833,7 +1839,7 @@ function renderReceptionTable(today){
     const t = aggregateReception(p.branch, d => d===today);
     return { p, mtd, t };
   });
-  document.getElementById("reception-table-hint").textContent = monthRangeOf(today).ym + " 누계";
+  document.getElementById("reception-table-hint").textContent = monthRangeOf(today).ym.slice(5) + "월 누계";
   const html = `
     <thead><tr><th>매니저</th><th>지점</th><th class="right">이달 예약</th><th class="right">이달 노쇼</th><th class="right">재예약(%)</th><th class="right">오늘 노쇼</th><th class="right">오늘 재예약</th></tr></thead>
     <tbody>
@@ -1962,7 +1968,7 @@ function renderLineChart(today){
       const branchId = rect.dataset.branch;
       const val = Number(rect.dataset.val).toLocaleString();
       showTooltipAt(ev.clientX, ev.clientY,
-        `<div class="t-date">${dt}</div><div class="t-row"><span class="k"><span class="sw" style="background:${branchHex(branchId)}"></span>${esc(branchName(branchId))}</span><span class="num">${val}만원</span></div>`);
+        `<div class="t-date">${md(dt)}</div><div class="t-row"><span class="k"><span class="sw" style="background:${branchHex(branchId)}"></span>${esc(branchName(branchId))}</span><span class="num">${val}만원</span></div>`);
     });
     rect.addEventListener("mouseleave", hideTooltip);
   });
@@ -2169,7 +2175,7 @@ function renderBranchIntakeOverview(today){
   if(!wrap) return;
   const yesterday = addDaysStr(today, -1);
   const hint = document.getElementById("intake-overview-hint");
-  if(hint) hint.textContent = `전일(${yesterday}) · 금일(${today}) · 리셉션 일마감에서 추출됩니다`;
+  if(hint) hint.textContent = `전일(${md(yesterday)}) · 금일(${md(today)}) · 리셉션 일마감에서 추출됩니다`;
   wrap.innerHTML = roster.branches.map(b=>{
     const yDoc = receptionDocs.get(`${b.id}_${yesterday}`);
     const tDoc = receptionDocs.get(`${b.id}_${today}`);
@@ -2179,8 +2185,8 @@ function renderBranchIntakeOverview(today){
       <div style="border:1px solid var(--border);border-radius:10px;padding:12px;border-left:4px solid ${branchHex(b.id)};">
         <div style="margin-bottom:8px;"><span class="pill ${b.id}">${esc(b.name)}</span></div>
         <div class="grid-2">
-          ${intakeStatsBlockHTML(`전일 입고 현황 (${yesterday})`, yStats)}
-          ${intakeStatsBlockHTML(`금일 예약 현황 (${today})`, tStats)}
+          ${intakeStatsBlockHTML(`전일 입고 현황 (${md(yesterday)})`, yStats)}
+          ${intakeStatsBlockHTML(`금일 예약 현황 (${md(today)})`, tStats)}
         </div>
       </div>`;
   }).join("");
@@ -2221,7 +2227,7 @@ function bindWeekView(){
 async function clearWeekMetrics(){
   if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
   const w = weekRangeOf(weekAnchorDate || todayKST());
-  if(!window.confirm(`${w.start} ~ ${w.end} 주의 OPEN RO / PR리스트 / 선수금 값을 전 지점에서 지웁니다.\n계속하시겠습니까?`)) return;
+  if(!window.confirm(`${md(w.start)} ~ ${md(w.end)} 주의 OPEN RO / PR리스트 / 선수금 값을 전 지점에서 지웁니다.\n계속하시겠습니까?`)) return;
   const btn = document.getElementById("week-clear-btn");
   if(btn){ btn.disabled = true; btn.textContent = "지우는 중…"; }
   try{
@@ -2232,7 +2238,7 @@ async function clearWeekMetrics(){
       weekMetricsDocs.set(id, { ...(weekMetricsDocs.get(id)||{}), ...payload });
     }
     renderWeekClose();
-    showToast(`${w.start} ~ ${w.end} 주의 업로드 값을 지웠습니다`);
+    showToast(`${md(w.start)} ~ ${md(w.end)} 주의 업로드 값을 지웠습니다`);
   }catch(err){
     console.error(err);
     showToast("지우는 중 오류가 발생했습니다");
@@ -2329,7 +2335,7 @@ function renderWeekCompare(thisWeek, weekNo, metricsByBranch){
   const wrap = document.getElementById("week-compare-table");
   if(!wrap) return;
   const hint = document.getElementById("week-compare-hint");
-  if(hint) hint.textContent = `${weekNo>0?weekNo+"주 · ":""}${thisWeek.start} ~ ${thisWeek.end} · 매출 단위: 만원`;
+  if(hint) hint.textContent = `${weekNo>0?weekNo+"주 · ":""}${md(thisWeek.start)} ~ ${md(thisWeek.end)} · 매출 단위: 만원`;
   wrap.innerHTML = `
     <thead><tr><th>구분</th>${roster.branches.map(b=>`<th class="right">${esc(b.name)}</th>`).join("")}</tr></thead>
     <tbody>
@@ -2360,7 +2366,7 @@ function renderWeekClose(){
   const thisWeek = weekRangeOf(weekAnchorDate);
   const {ym, start:monthStart} = monthRangeOf(weekAnchorDate);
   const hint = document.getElementById("week-range-hint");
-  if(hint) hint.textContent = `${ym} · 화면 기준 주: ${thisWeek.start} ~ ${thisWeek.end} (월~일)`;
+  if(hint) hint.textContent = `${ym.slice(5)}월 · 화면 기준 주: ${md(thisWeek.start)} ~ ${md(thisWeek.end)} (월~일)`;
   const weeks = weeksOfMonth(weekAnchorDate);
   const today = todayKST();
   const weekNo = weeks.findIndex(w=>w.start===thisWeek.start) + 1;
@@ -3034,8 +3040,8 @@ async function loadLoanerHistory(){
             <td>${esc(r.car_no)}</td>
             <td class="num">${esc(r.ro_no)}</td>
             <td>${esc(r.sa_name)}</td>
-            <td class="num">${esc(r.start)}</td>
-            <td class="num">${esc(r.end || (r.status==="대여중" ? "-" : "미기록"))}</td>
+            <td class="num">${esc(md(r.start))}</td>
+            <td class="num">${esc(r.end ? md(r.end) : (r.status==="대여중" ? "-" : "미기록"))}</td>
             <td>${esc(r.status)}</td>
             <td class="right num">${r.days===null ? "-" : r.days+"일"}</td>
             <td class="center">${r.checks.doc?"✓":"-"}</td>
@@ -3261,7 +3267,7 @@ async function loadVisitWeek(anchorDate){
   const tableEl = document.getElementById("visit-week-table");
   if(!rangeEl || !countEl || !tableEl || !supabaseClient) return;
   const w = weekRangeOf(anchorDate || todayKST());
-  rangeEl.textContent = `${w.start} ~ ${w.end}`;
+  rangeEl.textContent = `${md(w.start)} ~ ${md(w.end)}`;
   countEl.textContent = "불러오는 중…";
   tableEl.innerHTML = "";
   try{
