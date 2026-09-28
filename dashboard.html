@@ -849,8 +849,11 @@ function applyReadOnlyLock(){
   ["upload-openro-input","upload-advance-input","upload-pr-gunsan-input","upload-pr-mokpo-input","upload-pr-seosan-input","week-clear-btn"].forEach(id=>{ const b=document.getElementById(id); if(b) b.disabled = true; });
   lockContainer("sa-entry-body");
   lockContainer("rc-entry-body");
-  document.querySelectorAll('table[id^="loaner-table-"]').forEach(t=> lockContainer(t.id));
-  document.querySelectorAll('[data-loaner-add],[data-loaner-save]').forEach(b=> b.disabled = true);
+  // 팀장은 예외적으로 "로너카 관리"(차량 등록/삭제) 화면을 입력 가능
+  if(myIdentity?.role !== "team_lead"){
+    document.querySelectorAll('table[id^="loaner-table-"]').forEach(t=> lockContainer(t.id));
+    document.querySelectorAll('[data-loaner-add],[data-loaner-save]').forEach(b=> b.disabled = true);
+  }
   lockContainer("table-loaner");
   // T.E·팀장은 예외적으로 "숙박 차량" 섹션(차량번호/부품도착일/수리내용/상태버튼)만 입력 가능
   if(!["te","team_lead"].includes(myIdentity?.role)) lockContainer("staying-wrap");
@@ -1484,6 +1487,7 @@ function collectStayingVehicles(){
           docId, ro_no:e.ro_no, svc_type:e.svc_type||"",
           stay_reason:e.stay_reason||"", branch:doc.branch_slug, sa_name:doc.sa_name, date:doc.date,
           stay_car_no:e.stay_car_no||"", stay_parts_eta:e.stay_parts_eta||"", stay_repair_note:e.stay_repair_note||"",
+          stay_checkout_eta:e.stay_checkout_eta||"",
         });
       }
     });
@@ -1511,7 +1515,7 @@ function renderStayingTable(){
           <span class="hint">${list.length}대</span>
         </div>
         <div class="table-wrap"><table class="data entry-table">
-          <thead><tr><th>RO 번호</th><th>담당 SA</th><th>입고일</th><th>서비스 종류</th><th style="width:120px;">차량번호</th><th style="width:130px;">부품 도착일자</th><th style="width:180px;">수리내용</th><th>상태</th></tr></thead>
+          <thead><tr><th>RO 번호</th><th>담당 SA</th><th>입고일</th><th>서비스 종류</th><th style="width:120px;">차량번호</th><th style="width:130px;">부품 도착일자</th><th style="width:180px;">수리내용</th><th style="width:130px;">출고 예정일</th><th>상태</th></tr></thead>
           <tbody>
             ${list.map(r=>`
               <tr data-doc="${esc(r.docId)}" data-ro="${esc(r.ro_no)}">
@@ -1522,12 +1526,13 @@ function renderStayingTable(){
                 <td><input type="text" class="stay-detail-input" data-field="stay_car_no" value="${esc(r.stay_car_no)}" placeholder="12가3456"></td>
                 <td><input type="date" class="stay-detail-input" data-field="stay_parts_eta" value="${esc(r.stay_parts_eta)}"></td>
                 <td><input type="text" class="stay-detail-input" data-field="stay_repair_note" value="${esc(r.stay_repair_note)}" placeholder="수리내용"></td>
+                <td><input type="date" class="stay-detail-input" data-field="stay_checkout_eta" value="${esc(r.stay_checkout_eta)}"></td>
                 <td>
                   <div class="stay-status-group">
                     ${STAY_STATUS_BUTTONS.map(s=>`<button type="button" class="stay-status-btn ${r.stay_reason===s.key?'active':''}" data-status="${esc(s.key)}">${esc(s.label)}</button>`).join("")}
                   </div>
                 </td>
-              </tr>`).join("") || '<tr class="empty-row"><td colspan="8">숙박 중인 차량이 없습니다</td></tr>'}
+              </tr>`).join("") || '<tr class="empty-row"><td colspan="9">숙박 중인 차량이 없습니다</td></tr>'}
           </tbody>
         </table></div>
       </div>`;
