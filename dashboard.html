@@ -821,13 +821,12 @@ let loanerEntries = { gunsan:[], mokpo:[], seosan:[] }; // rows being edited in 
 /* ---------------------------------------------------------------- */
 function isReadOnlyRole(){
   const role = myIdentity?.role;
-  return role === "viewer" || role === "team_lead" || role === "te";
+  return role === "viewer" || role === "te";
 }
 function identityRoleLabel(){
   if(!myIdentity) return "";
   const roSuffix = isReadOnlyRole() ? " · 읽기 전용" : "";
   if(myIdentity.role === "admin") return " · " + (myProfile?.display_name || "관리자");
-  if(myIdentity.role === "manager") return " · 관리팀장(" + (myProfile?.display_name||"") + ")";
   if(myIdentity.role === "viewer") return " · 뷰어(" + (myProfile?.display_name||"") + ")" + roSuffix;
   if(myIdentity.role === "team_lead") return " · 팀장(" + (myProfile?.display_name||"") + ")" + roSuffix;
   if(myIdentity.role === "te") return " · T.E(" + (myProfile?.display_name||"") + ")" + roSuffix;
@@ -844,21 +843,20 @@ function lockContainer(containerId, skipIds){
 }
 function applyReadOnlyLock(){
   if(!isReadOnlyRole()) return;
-  // 뷰어·팀장·T.E — 설정 외 화면은 조회는 가능하지만 저장/추가/삭제/상태변경 등 입력은 모두 잠급니다.
+  // 뷰어·T.E — 설정 외 화면은 조회는 가능하지만 저장/추가/삭제/상태변경 등 입력은 모두 잠급니다.
   ["sa-save-btn","sa-add-row"].forEach(id=>{ const b=document.getElementById(id); if(b) b.disabled = true; });
   ["rc-save-btn","rc-add-row","rc-excel-btn"].forEach(id=>{ const b=document.getElementById(id); if(b) b.disabled = true; });
   ["upload-openro-input","upload-advance-input","upload-pr-gunsan-input","upload-pr-mokpo-input","upload-pr-seosan-input","week-clear-btn"].forEach(id=>{ const b=document.getElementById(id); if(b) b.disabled = true; });
   lockContainer("sa-entry-body");
   lockContainer("rc-entry-body");
-  // 팀장은 예외적으로 "로너카 관리"(차량 등록/삭제) 화면을 입력 가능
-  if(myIdentity?.role !== "team_lead"){
-    document.querySelectorAll('table[id^="loaner-table-"]').forEach(t=> lockContainer(t.id));
-    document.querySelectorAll('[data-loaner-add],[data-loaner-save]').forEach(b=> b.disabled = true);
-  }
+  // "로너카 관리"(차량 등록/삭제)는 뷰어·T.E 모두 조회만 가능합니다.
+  document.querySelectorAll('table[id^="loaner-table-"]').forEach(t=> lockContainer(t.id));
+  document.querySelectorAll('[data-loaner-add],[data-loaner-save]').forEach(b=> b.disabled = true);
+  // T.E는 예외적으로 "숙박 차량" / "재입고 예정 차량"만 입력 가능 (로너카 사용현황 반납완료는 제외)
+  const teAllowed = myIdentity?.role === "te";
+  if(!teAllowed) lockContainer("staying-wrap");
   lockContainer("table-loaner");
-  // T.E·팀장은 예외적으로 "숙박 차량" 섹션(차량번호/부품도착일/수리내용/상태버튼)만 입력 가능
-  if(!["te","team_lead"].includes(myIdentity?.role)) lockContainer("staying-wrap");
-  lockContainer("table-return");
+  if(!teAllowed) lockContainer("table-return");
   // "바로가기"는 데이터를 바꾸지 않는 화면 이동 버튼이므로 읽기 전용 역할에서도 눌리게 둡니다.
   document.querySelectorAll('#table-return [data-goto-return]').forEach(b=> b.disabled = false);
 }
@@ -3254,7 +3252,7 @@ function renderSettings(){
 /* 직원 승인 / 역할 관리 (admin only) — Supabase Auth 계정과              */
 /* 이 앱의 역할(관리자/SA/리셉션/뷰어) + 담당자를 연결합니다                */
 /* ---------------------------------------------------------------- */
-const ROLE_LABELS = { pending:"승인 대기", admin:"관리자", manager:"관리팀장", sa:"SA", reception:"리셉션", team_lead:"팀장", te:"T.E", viewer:"뷰어" };
+const ROLE_LABELS = { pending:"승인 대기", admin:"관리자", sa:"SA", reception:"리셉션", team_lead:"팀장", te:"T.E", viewer:"뷰어" };
 async function renderProfilesPanel(){
   const wrap = document.getElementById("settings-profiles");
   wrap.innerHTML = '<p class="muted">불러오는 중…</p>';
