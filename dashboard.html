@@ -1652,9 +1652,10 @@ function computeLoanerUsage(){
   for(const [docId, doc] of saDocs.entries()){
     for(const e of (doc.entries||[])){
       if(e.loaner_used === "O" && e.loaner_car_no && e.checkout_yn !== "O"){
+        const startDate = e.loaner_start_date || doc.date; // 실제 로너카 대여 시작일(없으면 RO 접수일로 대체)
         usage.set(doc.branch_slug + "|" + e.loaner_car_no, {
-          docId, ro_no:e.ro_no, sa_name:doc.sa_name, date:doc.date,
-          days: daysBetweenInclusive(doc.date, today),
+          docId, ro_no:e.ro_no, sa_name:doc.sa_name, date:startDate,
+          days: daysBetweenInclusive(startDate, today),
           checks: {
             doc: e.loaner_check_doc === "O",
             license: e.loaner_check_license === "O",
@@ -1729,7 +1730,7 @@ function renderLoanerSummary(){
           <td style="${r._inUse?'color:var(--warning);font-weight:900;':'color:var(--text-muted);'}">${r._inUse?'대여중':'대기중'}</td>
           <td class="num">${esc(r._usage ? r._usage.ro_no : "")}</td>
           <td>${esc(r._usage ? r._usage.sa_name : "")}</td>
-          <td class="num">${esc(r._usage ? md(r._usage.date) : "")}</td>
+          <td class="num">${r._inUse ? `<input type="text" class="loaner-start-input" data-doc="${esc(r._usage.docId)}" data-ro="${esc(r._usage.ro_no)}" value="${esc(md(r._usage.date))}" placeholder="MM-DD" maxlength="5" title="${esc(r._usage.date)}" style="width:60px;">` : ""}</td>
           <td class="right num">${r._inUse ? r._usage.days + "일" : ""}</td>
           ${checkCell(r,"doc","서류")}
           ${checkCell(r,"license","면허 진위")}
@@ -1750,7 +1751,41 @@ function renderLoanerSummary(){
       returnLoanerCar(btn.dataset.returnDoc, btn.dataset.returnRo);
     });
   });
+  wrap.querySelectorAll(".loaner-start-input").forEach(inp=>{
+    inp.addEventListener("change", ()=>{
+      updateLoanerStartDate(inp.dataset.doc, inp.dataset.ro, inp.value);
+    });
+  });
   applyReadOnlyLock();
+}
+async function updateLoanerStartDate(docId, roNo, value){
+  if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
+  const v = String(value||"").trim();
+  let toSave;
+  if(/^\d{2}-\d{2}$/.test(v)){
+    toSave = inferYearForMD(v, todayKST());
+  } else {
+    showToast("대여일은 MM-DD 형식으로 입력해주세요 (예: 09-29)");
+    renderLoanerSummary();
+    return;
+  }
+  try{
+    const snap = await db.doc("sa_days/"+docId).get();
+    if(!snap.exists){ showToast("데이터를 찾을 수 없습니다"); return; }
+    const data = snap.data();
+    const entries = (data.entries||[]).map(e=>({...e}));
+    const idx = entries.findIndex(e=>e.ro_no === roNo);
+    if(idx === -1){ showToast("해당 RO를 찾을 수 없습니다"); return; }
+    entries[idx].loaner_start_date = toSave;
+    const payload = { ...data, entries, submitted_at: new Date().toISOString() };
+    await db.doc("sa_days/"+docId).set(payload);
+    saDocs.set(docId, payload);
+    showToast(`${roNo} 대여일이 ${md(toSave)}(으)로 수정되었습니다`);
+    renderDashboard();
+  }catch(err){
+    console.error(err);
+    showToast("대여일 수정 중 오류가 발생했습니다");
+  }
 }
 async function returnLoanerCar(docId, roNo){
   if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
@@ -2774,7 +2809,10 @@ function renderSAEntryTable(){
   body.querySelectorAll(".toggle-loaner button").forEach(btn=>{
     btn.addEventListener("click", ()=>{
       const idx = Number(btn.closest("tr").dataset.idx);
-      saEntries[idx].loaner_used = (saEntries[idx].loaner_used === btn.dataset.loanerSet) ? "" : btn.dataset.loanerSet;
+      const newVal = (saEntries[idx].loaner_used === btn.dataset.loanerSet) ? "" : btn.dataset.loanerSet;
+      // 로너카 대여(O)로 새로 전환되는 순간의 날짜를 "대여일"로 기록합니다 (RO 접수일과 다를 수 있음)
+      if(newVal === "O" && saEntries[idx].loaner_used !== "O") saEntries[idx].loaner_start_date = todayKST();
+      saEntries[idx].loaner_used = newVal;
       if(saEntries[idx].loaner_used !== "O") saEntries[idx].loaner_car_no = "";
       renderSAEntryTable();
     });
@@ -3100,7 +3138,7 @@ async function loadLoanerHistory(){
       (row.entries||[]).forEach(e=>{
         if(!e.loaner_car_no) return;
         const inUse = e.loaner_used === "O";
-        const start = row.date;
+        const start = e.loaner_start_date || row.date;
         const end = inUse ? "" : (e.loaner_return_date || "");
         const days = inUse ? daysBetweenInclusive(start, today) : (end ? daysBetweenInclusive(start, end) : null);
         rows.push({
@@ -3523,7 +3561,7 @@ function computeLoanerMonthlyUsage(monthStart, monthEnd){
       if(!e.loaner_car_no) continue;
       if(e.loaner_used !== "O" && e.loaner_used !== "X") continue;
       if(e.loaner_used === "X" && !e.loaner_return_date) continue; // 반납일 기록이 없는 이전 자료는 집계 제외
-      const rangeStart = doc.date;
+      const rangeStart = e.loaner_start_date || doc.date;
       const rangeEnd = e.loaner_used === "O" ? today : e.loaner_return_date;
       const overlapStart = rangeStart > monthStart ? rangeStart : monthStart;
       const overlapEnd = rangeEnd < monthEnd ? rangeEnd : monthEnd;
