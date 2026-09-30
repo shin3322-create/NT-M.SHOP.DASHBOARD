@@ -339,6 +339,7 @@
     <nav class="tabs" id="nav-tabs">
       <button data-view="dashboard" class="active" id="nav-dashboard">대시보드</button>
       <button data-view="week" id="nav-week">주마감</button>
+      <button data-view="month" id="nav-month">월마감</button>
       <button data-view="sa" id="nav-sa">어드바이저 입력</button>
       <button data-view="reception" id="nav-reception">리셉션 입력</button>
       <button data-view="loaner" id="nav-loaner">로너카 관리</button>
@@ -508,6 +509,43 @@
       </div>
     </div>
     <div id="week-branches" style="display:flex;flex-direction:column;gap:16px;"></div>
+  </section>
+
+  <!-- ===================== MONTHLY CLOSE ===================== -->
+  <section class="view" id="view-month" hidden>
+    <div class="card">
+      <div class="section-head">
+        <h2>월마감</h2>
+        <span class="hint" id="month-range-hint"></span>
+      </div>
+      <div class="field-row" style="margin-top:12px;">
+        <div class="field" style="min-width:auto;">
+          <button class="btn ghost sm" id="month-prev-btn">◀ 이전 달</button>
+        </div>
+        <div class="field">
+          <label for="month-anchor-date">기준월</label>
+          <input type="month" id="month-anchor-date">
+        </div>
+        <div class="field" style="min-width:auto;">
+          <button class="btn ghost sm" id="month-next-btn">다음 달 ▶</button>
+        </div>
+        <div class="field" style="min-width:auto;">
+          <button class="btn ghost sm" id="month-thismonth-btn">이번 달</button>
+        </div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <div class="section-head">
+        <h2>지점 비교 (회사보고용)</h2>
+        <span class="hint" id="month-compare-hint">SA·리셉션 일마감 데이터와 주마감 업로드 값(OPEN RO/PR리스트/선수금)을 자동 집계합니다</span>
+      </div>
+      <div class="field-row" style="margin-top:10px;">
+        <div class="field" style="min-width:auto;">
+          <button class="btn primary sm" id="month-compare-export-btn">엑셀로 내보내기</button>
+        </div>
+      </div>
+      <div class="table-wrap" style="margin-top:10px;"><table class="data" id="month-compare-table"></table></div>
+    </div>
   </section>
 
   <!-- ===================== SA INPUT ===================== -->
@@ -1081,6 +1119,7 @@ async function init(){
   bindNav();
   bindDashboardDatePicker();
   bindWeekView();
+  bindMonthView();
   bindSAForm();
   bindReceptionForm();
   bindSettingsForm();
@@ -1120,6 +1159,8 @@ function setDefaultDates(){
   document.getElementById("rc-date").value = t;
   document.getElementById("week-anchor-date").value = t;
   weekAnchorDate = t;
+  document.getElementById("month-anchor-date").value = t.slice(0,7);
+  monthAnchorDate = t;
 }
 
 /* ---------------------------------------------------------------- */
@@ -1232,12 +1273,13 @@ function bindDashboardDatePicker(){
 }
 function switchView(view){
   currentView = view;
-  ["dashboard","week","sa","reception","loaner","settings"].forEach(v=>{
+  ["dashboard","week","month","sa","reception","loaner","settings"].forEach(v=>{
     document.getElementById("view-"+v).hidden = (v!==view);
     document.getElementById("nav-"+v).classList.toggle("active", v===view);
   });
   if(view==="dashboard") renderDashboard();
   if(view==="week") renderWeekClose();
+  if(view==="month") loadMonthClose();
   if(view==="sa") renderIntakeAnalysis();
   if(view==="loaner") loadLoanerEntries();
   if(view==="settings") renderSettings();
@@ -2498,6 +2540,173 @@ function renderWeekClose(){
   const exportBtn = document.getElementById("week-compare-export-btn");
   if(exportBtn) exportBtn.onclick = ()=> exportWeekCompareExcel(thisWeek, weekNo, metricsByBranch);
   applyReadOnlyLock();
+}
+
+/* ================================================================ */
+/* MONTHLY CLOSE — 월마감 (지점 비교, 회사보고용)                        */
+/* SA·리셉션 일마감 데이터를 월 단위로 직접 조회(fetch)해서 집계합니다.     */
+/* 대시보드 화면은 "이번 달" 데이터만 실시간 구독하고 있어서, 다른 달을     */
+/* 조회할 때는 여기서 별도로 Supabase에 1회성 조회를 합니다.              */
+/* OPEN RO / PR리스트 / 선수금리스트는 별도 업로드 없이, 이미 주마감에서   */
+/* 업로드된 값 중 해당 월의 가장 최근 주(週) 값을 그대로 가져다 씁니다.    */
+/* ================================================================ */
+let monthAnchorDate = null;
+let monthCloseData = null;
+function aggregateSAFromList(list, filterFn){
+  let out = { total_sales:0, retail:0, bsi:0, warranty:0, recall:0, insurance:0, internal:0,
+              sp_count:0, wp_count:0, ro_count:0, checkout_o:0, checkout_x:0, loaner_count:0, mass_recall:0 };
+  for(const doc of list){
+    if(filterFn && !filterFn(doc.date)) continue;
+    const s = doc.summary || {};
+    for(const k in out) out[k] += (s[k]||0);
+  }
+  return out;
+}
+function latestWeekMetricsInMonth(branchId, monthAnchor){
+  const weeks = weeksOfMonth(monthAnchor);
+  for(let i=weeks.length-1; i>=0; i--){
+    const wm = weekMetricsFor(branchId, weeks[i].start);
+    if(wm.open_ro!=null || wm.pr_list!=null || wm.advance_amt!=null) return wm;
+  }
+  return {};
+}
+function computeMonthMetricsRow(branchId, monthStart, monthEnd, today, saList, rcList){
+  const target = targets[branchId] || DEFAULT_TARGETS[branchId] || 0;
+  const cumEnd = monthEnd < today ? monthEnd : today;
+  const sa = aggregateSAFromList(saList.filter(d=>d.branch_slug===branchId), d=>d>=monthStart && d<=cumEnd);
+  let mergedEntries = [];
+  rcList.forEach(doc=>{
+    if(doc.branch_slug !== branchId) return;
+    if(doc.date < monthStart || doc.date > cumEnd) return;
+    mergedEntries = mergedEntries.concat(doc.entries||[]);
+  });
+  const intake = analyzeIntake(mergedEntries);
+  const achieveRate = target>0 ? sa.total_sales/target : 0;
+  const wm = latestWeekMetricsInMonth(branchId, monthStart);
+  return {
+    target, retail: sa.retail, bsi: sa.bsi, warranty: sa.warranty, insurance: sa.insurance,
+    cum_total_sales: sa.total_sales, achieveRate,
+    reserved_count: intake.reserved_count, checkin_count: intake.checkin_count, walkin_count: intake.walkin_count,
+    noshow_count: intake.noshow_count, rebook_ok: intake.rebook_ok,
+    noshowRate: intake.noshow_count>0 ? intake.rebook_ok/intake.noshow_count : null,
+    momRate: null, // 아래 loadMonthClose에서 전월 데이터로 채웁니다
+    open_ro: wm.open_ro, pr_list: wm.pr_list, advance_amt: wm.advance_amt,
+  };
+}
+const MONTH_COMPARE_METRICS = [
+  { label:"RETAIL", fmt: m=>fmtManwon(m.retail) },
+  { label:"BSI", fmt: m=>fmtManwon(m.bsi) },
+  { label:"WARRANTY", fmt: m=>fmtManwon(m.warranty) },
+  { label:"Insurance", fmt: m=>fmtManwon(m.insurance) },
+  { label:"월매출", fmt: m=>fmtManwon(m.cum_total_sales) },
+  { label:"타겟", fmt: m=>fmtManwon(m.target) },
+  { label:"달성율", fmt: m=>fmtPct(m.achieveRate) },
+  { label:"예약", fmt: m=>m.reserved_count },
+  { label:"입고", fmt: m=>m.checkin_count },
+  { label:"비예약", fmt: m=>m.walkin_count },
+  { label:"노쇼", fmt: m=>m.noshow_count },
+  { label:"재예약성공", fmt: m=>m.rebook_ok },
+  { label:"노쇼이행율", fmt: m=>m.noshowRate===null?"-":fmtPct(m.noshowRate) },
+  { label:"전월대비예약율", fmt: m=>m.momRate===null?"-":(m.momRate>=0?"+":"")+fmtPct(m.momRate) },
+  { label:"OPEN RO", fmt: m=>m.open_ro ?? "-" },
+  { label:"PR리스트", fmt: m=>m.pr_list ?? "-" },
+  { label:"선수금리스트", fmt: m=>m.advance_amt!=null ? fmtManwon(m.advance_amt) : "-" },
+];
+async function loadMonthClose(){
+  const wrap = document.getElementById("month-compare-table");
+  if(!wrap || !db) return;
+  if(!monthAnchorDate) monthAnchorDate = todayKST();
+  const input = document.getElementById("month-anchor-date");
+  if(input) input.value = monthAnchorDate.slice(0,7);
+  const {start:monthStart, end:monthEnd, ym} = monthRangeOf(monthAnchorDate);
+  const hint = document.getElementById("month-range-hint");
+  if(hint) hint.textContent = `${ym} · 불러오는 중…`;
+  const today = todayKST();
+  const {start:prevStart, end:prevEnd} = monthRangeOf(addDaysStr(monthStart, -1));
+  try{
+    const [saSnap, rcSnap, prevRcSnap] = await Promise.all([
+      db.collection("sa_days").where("date",">=",monthStart).where("date","<=",monthEnd).get(),
+      db.collection("reception_days").where("date",">=",monthStart).where("date","<=",monthEnd).get(),
+      db.collection("reception_days").where("date",">=",prevStart).where("date","<=",prevEnd).get(),
+    ]);
+    const saList = saSnap.docs.map(d=>d.data());
+    const rcList = rcSnap.docs.map(d=>d.data());
+    const prevRcList = prevRcSnap.docs.map(d=>d.data());
+    const metricsByBranch = {};
+    roster.branches.forEach(b=>{
+      const m = computeMonthMetricsRow(b.id, monthStart, monthEnd, today, saList, rcList);
+      let prevEntries = [];
+      prevRcList.forEach(doc=>{ if(doc.branch_slug===b.id) prevEntries = prevEntries.concat(doc.entries||[]); });
+      const prevReserved = analyzeIntake(prevEntries).reserved_count;
+      m.momRate = prevReserved>0 ? (m.reserved_count-prevReserved)/prevReserved : null;
+      metricsByBranch[b.id] = m;
+    });
+    monthCloseData = { ym, monthStart, monthEnd, metricsByBranch };
+    renderMonthCompare();
+  }catch(err){
+    console.error(err);
+    if(hint) hint.textContent = `${ym} · 데이터를 불러오지 못했습니다`;
+    showToast("월마감 데이터를 불러오지 못했습니다");
+  }
+}
+function renderMonthCompare(){
+  if(!monthCloseData) return;
+  const { ym, monthStart, monthEnd, metricsByBranch } = monthCloseData;
+  const wrap = document.getElementById("month-compare-table");
+  if(!wrap) return;
+  const today = todayKST();
+  const isCurMonth = today>=monthStart && today<=monthEnd;
+  const hint = document.getElementById("month-range-hint");
+  if(hint) hint.textContent = `${ym} · ${isCurMonth ? "1일~오늘 누계" : "1일~말일 전체"} · 매출 단위: 만원`;
+  wrap.innerHTML = `
+    <thead><tr><th>구분</th>${roster.branches.map(b=>`<th class="right">${esc(b.name)}</th>`).join("")}</tr></thead>
+    <tbody>
+      ${MONTH_COMPARE_METRICS.map(row=>`
+        <tr><td>${esc(row.label)}</td>${roster.branches.map(b=>`<td class="right num">${row.fmt(metricsByBranch[b.id])}</td>`).join("")}</tr>`).join("")}
+    </tbody>`;
+  const exportBtn = document.getElementById("month-compare-export-btn");
+  if(exportBtn) exportBtn.onclick = ()=> exportMonthCompareExcel();
+}
+function exportMonthCompareExcel(){
+  if(!monthCloseData) return;
+  if(typeof XLSX === "undefined"){ showToast("엑셀 내보내기 기능을 사용할 수 없습니다"); return; }
+  const { ym, monthStart, monthEnd, metricsByBranch } = monthCloseData;
+  const aoa = [
+    [`${ym} (${monthStart} ~ ${monthEnd}) 지점 비교 · 매출 단위: 만원`],
+    ["구분", ...roster.branches.map(b=>b.name)],
+    ...MONTH_COMPARE_METRICS.map(row=> [row.label, ...roster.branches.map(b=>row.fmt(metricsByBranch[b.id]))]),
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = [{wch:16}, ...roster.branches.map(()=>({wch:12}))];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "월지점비교");
+  const fname = `월간지점비교_${ym}.xlsx`;
+  XLSX.writeFile(wb, fname);
+}
+function bindMonthView(){
+  const input = document.getElementById("month-anchor-date");
+  if(!input) return;
+  input.addEventListener("change", ()=>{
+    monthAnchorDate = input.value ? input.value+"-01" : todayKST();
+    loadMonthClose();
+  });
+  document.getElementById("month-prev-btn").addEventListener("click", ()=>{
+    const {start} = monthRangeOf(monthAnchorDate || todayKST());
+    monthAnchorDate = addDaysStr(start, -1);
+    input.value = monthRangeOf(monthAnchorDate).ym;
+    loadMonthClose();
+  });
+  document.getElementById("month-next-btn").addEventListener("click", ()=>{
+    const {end} = monthRangeOf(monthAnchorDate || todayKST());
+    monthAnchorDate = addDaysStr(end, 1);
+    input.value = monthRangeOf(monthAnchorDate).ym;
+    loadMonthClose();
+  });
+  document.getElementById("month-thismonth-btn").addEventListener("click", ()=>{
+    monthAnchorDate = todayKST();
+    input.value = monthRangeOf(monthAnchorDate).ym;
+    loadMonthClose();
+  });
 }
 
 /* ---- 주마감 업로드: OPEN RO Clearance Report / PR 리스트 / 선수금 리스트 ---- */
