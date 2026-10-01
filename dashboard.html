@@ -1215,6 +1215,51 @@ function subscribeMonthData(dateStr){
       renderDashboard();
     }, err=>console.warn("sa query error", err)));
   }catch(err){ console.warn(err); }
+
+  loadCarryoverSADocs(start);
+}
+
+/* ---------------------------------------------------------------- */
+/* 달이 바뀌어도 "전달 이전에 접수했지만 아직 마감 안 된" RO(숙박 차량/   */
+/* 재입고 예정/로너카 반납 전)가 대시보드에서 사라지지 않도록, 현재 달   */
+/* 범위 밖의 미해결 건만 별도로 1회성 조회해서 보관합니다(실시간 구독    */
+/* 아님). 달이 바뀔 때마다 다시 불러옵니다.                             */
+/* ---------------------------------------------------------------- */
+let carryoverSaDocs = new Map();
+const CARRYOVER_LOOKBACK_MONTHS = 6; // 이 기간 내에서만 "미해결" 건을 찾습니다
+function addMonthsStr(dateStr, delta){
+  const [y,m] = dateStr.slice(0,7).split("-").map(Number);
+  return new Date(Date.UTC(y, m-1+delta, 1)).toISOString().slice(0,10);
+}
+function syncLocalSADoc(docId, payload){
+  // 저장한 문서의 날짜가 현재 구독 중인 달이면 실시간 캐시(saDocs)에,
+  // 그 전달 이전(carryover) 건이면 carryoverSaDocs에 반영해서 화면에 바로 반영되게 합니다.
+  if(payload && payload.date && payload.date.slice(0,7) === currentMonthKey){
+    saDocs.set(docId, payload);
+  } else {
+    carryoverSaDocs.set(docId, payload);
+  }
+}
+function allSADocEntries(){
+  return [...saDocs.entries(), ...carryoverSaDocs.entries()];
+}
+async function loadCarryoverSADocs(monthStart){
+  if(!db) return;
+  const cutoff = addMonthsStr(monthStart, -CARRYOVER_LOOKBACK_MONTHS);
+  try{
+    const snap = await db.collection("sa_days").where("date",">=",cutoff).where("date","<",monthStart).get();
+    carryoverSaDocs.clear();
+    snap.docs.forEach(d=>{
+      const data = d.data();
+      const hasOpenItem = (data.entries||[]).some(e =>
+        e.checkout_yn === "X" || !!e.return_date || (e.loaner_used === "O" && e.checkout_yn !== "O")
+      );
+      if(hasOpenItem) carryoverSaDocs.set(d.id, data);
+    });
+    renderDashboard();
+  }catch(err){
+    console.warn("carryover sa_days fetch error", err);
+  }
 }
 
 function subscribeLoaner(){
@@ -1463,7 +1508,7 @@ const RETURN_STATUS_BUTTONS = [
 ];
 function collectReturnVehicles(){
   const rows = [];
-  for(const [docId, doc] of saDocs.entries()){
+  for(const [docId, doc] of allSADocEntries()){
     for(const e of (doc.entries||[])){
       if(e.return_date){
         rows.push({ docId, ro_no:e.ro_no, return_date:e.return_date, return_reason:e.return_reason||"",
@@ -1537,7 +1582,7 @@ async function updateReturnStatus(docId, roNo, status){
     const summary = bucketSA(entries);
     const payload = { ...data, entries, summary, submitted_at: new Date().toISOString() };
     await db.doc("sa_days/"+docId).set(payload);
-    saDocs.set(docId, payload);
+    syncLocalSADoc(docId, payload);
     const label = RETURN_STATUS_BUTTONS.find(s=>s.key===status)?.label || status;
     showToast(status==="수리완료" ? `${roNo} 수리완료 처리되어 재입고 목록에서 제외되고 출고가 O로 변경되었습니다` : `${roNo} 상태를 "${label}"(으)로 변경했습니다`);
     renderDashboard();
@@ -1557,7 +1602,7 @@ const STAY_STATUS_BUTTONS = [
 ];
 function collectStayingVehicles(){
   const rows = [];
-  for(const [docId, doc] of saDocs.entries()){
+  for(const [docId, doc] of allSADocEntries()){
     (doc.entries||[]).forEach(e=>{
       if(e.checkout_yn === "X" && e.ro_no){
         rows.push({
@@ -1655,7 +1700,7 @@ async function updateStayDetail(docId, roNo, field, value){
     entries[idx][field] = toSave;
     const payload = { ...data, entries, submitted_at: new Date().toISOString() };
     await db.doc("sa_days/"+docId).set(payload);
-    saDocs.set(docId, payload);
+    syncLocalSADoc(docId, payload);
   }catch(err){
     console.error(err);
     showToast("저장 중 오류가 발생했습니다");
@@ -1677,7 +1722,7 @@ async function updateStayStatus(docId, roNo, status){
     const summary = bucketSA(entries);
     const payload = { ...data, entries, summary, submitted_at: new Date().toISOString() };
     await db.doc("sa_days/"+docId).set(payload);
-    saDocs.set(docId, payload);
+    syncLocalSADoc(docId, payload);
     const label = STAY_STATUS_BUTTONS.find(s=>s.key===status)?.label || status;
     showToast(status==="수리완료" ? `${roNo} 수리완료 처리되어 숙박 목록에서 제외되었습니다` : `${roNo} 상태를 "${label}"(으)로 변경했습니다`);
     renderDashboard();
@@ -1691,7 +1736,7 @@ function computeLoanerUsage(){
   // key `${branch_slug}|${car_no}` -> { docId, ro_no, sa_name, date, days, checks }  (아직 출고되지 않은, 로너카를 사용 중인 RO)
   const usage = new Map();
   const today = todayKST();
-  for(const [docId, doc] of saDocs.entries()){
+  for(const [docId, doc] of allSADocEntries()){
     for(const e of (doc.entries||[])){
       if(e.loaner_used === "O" && e.loaner_car_no && e.checkout_yn !== "O"){
         const startDate = e.loaner_start_date || doc.date; // 실제 로너카 대여 시작일(없으면 RO 접수일로 대체)
@@ -1725,7 +1770,7 @@ async function updateLoanerCheck(docId, roNo, field, value){
     entries[idx][key] = value;
     const payload = { ...data, entries, submitted_at: new Date().toISOString() };
     await db.doc("sa_days/"+docId).set(payload);
-    saDocs.set(docId, payload);
+    syncLocalSADoc(docId, payload);
     renderLoanerSummary();
   }catch(err){
     console.error(err);
@@ -1821,7 +1866,7 @@ async function updateLoanerStartDate(docId, roNo, value){
     entries[idx].loaner_start_date = toSave;
     const payload = { ...data, entries, submitted_at: new Date().toISOString() };
     await db.doc("sa_days/"+docId).set(payload);
-    saDocs.set(docId, payload);
+    syncLocalSADoc(docId, payload);
     showToast(`${roNo} 대여일이 ${md(toSave)}(으)로 수정되었습니다`);
     renderDashboard();
   }catch(err){
@@ -1845,7 +1890,7 @@ async function returnLoanerCar(docId, roNo){
     }
     const payload = { ...data, entries, submitted_at: new Date().toISOString() };
     await db.doc("sa_days/"+docId).set(payload);
-    saDocs.set(docId, payload);
+    syncLocalSADoc(docId, payload);
     showToast(`${roNo} 로너카가 반납 처리되었습니다`);
     renderDashboard();
   }catch(err){
@@ -3114,9 +3159,7 @@ async function saveSAEntry(){
   btn.disabled = true; btn.textContent = "저장 중…";
   try{
     await db.doc("sa_days/"+id).set(payload);
-    if(date.slice(0,7) === currentMonthKey || monthRangeOf(date).ym === currentMonthKey){
-      saDocs.set(id, payload);
-    }
+    syncLocalSADoc(id, payload);
     showToast("저장되었습니다 · " + p.name + " · " + date);
     renderDashboard();
   }catch(err){
