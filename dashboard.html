@@ -1569,16 +1569,20 @@ async function updateReturnStatus(docId, roNo, status){
     if(!snap.exists){ showToast("데이터를 찾을 수 없습니다"); return; }
     const data = snap.data();
     const entries = (data.entries||[]).map(e=>({...e}));
-    const idx = entries.findIndex(e=>e.ro_no === roNo);
-    if(idx === -1){ showToast("해당 RO를 찾을 수 없습니다"); return; }
-    if(status === "수리완료"){
-      entries[idx].checkout_yn = "O";
-      entries[idx].return_date = "";
-      entries[idx].return_reason = "";
-      entries[idx].return_status = "";
-    }else{
-      entries[idx].return_status = status;
-    }
+    // RO번호가 같은 항목이 실수로 중복 입력되어 있는 경우까지 대비해, 하나가 아니라
+    // 일치하는 항목 전부를 갱신합니다(안 그러면 중복된 나머지 하나가 그대로 남아있는 것처럼 보입니다).
+    const matches = entries.filter(e=>e.ro_no === roNo);
+    if(matches.length === 0){ showToast("해당 RO를 찾을 수 없습니다"); return; }
+    matches.forEach(e=>{
+      if(status === "수리완료"){
+        e.checkout_yn = "O";
+        e.return_date = "";
+        e.return_reason = "";
+        e.return_status = "";
+      }else{
+        e.return_status = status;
+      }
+    });
     const summary = bucketSA(entries);
     const payload = { ...data, entries, summary, submitted_at: new Date().toISOString() };
     await db.doc("sa_days/"+docId).set(payload);
@@ -1695,9 +1699,9 @@ async function updateStayDetail(docId, roNo, field, value){
     if(!snap.exists){ showToast("데이터를 찾을 수 없습니다"); return; }
     const data = snap.data();
     const entries = (data.entries||[]).map(e=>({...e}));
-    const idx = entries.findIndex(e=>e.ro_no === roNo);
-    if(idx === -1){ showToast("해당 RO를 찾을 수 없습니다"); return; }
-    entries[idx][field] = toSave;
+    const matches = entries.filter(e=>e.ro_no === roNo);
+    if(matches.length === 0){ showToast("해당 RO를 찾을 수 없습니다"); return; }
+    matches.forEach(e=>{ e[field] = toSave; });
     const payload = { ...data, entries, submitted_at: new Date().toISOString() };
     await db.doc("sa_days/"+docId).set(payload);
     syncLocalSADoc(docId, payload);
@@ -1713,12 +1717,15 @@ async function updateStayStatus(docId, roNo, status){
     if(!snap.exists){ showToast("데이터를 찾을 수 없습니다"); return; }
     const data = snap.data();
     const entries = (data.entries||[]).map(e=>({...e}));
-    const idx = entries.findIndex(e=>e.ro_no === roNo);
-    if(idx === -1){ showToast("해당 RO를 찾을 수 없습니다"); return; }
-    entries[idx].stay_reason = status;
-    if(status === "수리완료"){
-      entries[idx].checkout_yn = "O";
-    }
+    // RO번호가 같은 항목이 실수로 중복 입력되어 있는 경우까지 대비해, 일치하는 항목 전부를 갱신합니다.
+    const matches = entries.filter(e=>e.ro_no === roNo);
+    if(matches.length === 0){ showToast("해당 RO를 찾을 수 없습니다"); return; }
+    matches.forEach(e=>{
+      e.stay_reason = status;
+      if(status === "수리완료"){
+        e.checkout_yn = "O";
+      }
+    });
     const summary = bucketSA(entries);
     const payload = { ...data, entries, summary, submitted_at: new Date().toISOString() };
     await db.doc("sa_days/"+docId).set(payload);
@@ -1765,9 +1772,9 @@ async function updateLoanerCheck(docId, roNo, field, value){
     if(!snap.exists){ showToast("데이터를 찾을 수 없습니다"); return; }
     const data = snap.data();
     const entries = (data.entries||[]).map(e=>({...e}));
-    const idx = entries.findIndex(e=>e.ro_no === roNo);
-    if(idx === -1){ showToast("해당 RO를 찾을 수 없습니다"); return; }
-    entries[idx][key] = value;
+    const matches = entries.filter(e=>e.ro_no === roNo);
+    if(matches.length === 0){ showToast("해당 RO를 찾을 수 없습니다"); return; }
+    matches.forEach(e=>{ e[key] = value; });
     const payload = { ...data, entries, submitted_at: new Date().toISOString() };
     await db.doc("sa_days/"+docId).set(payload);
     syncLocalSADoc(docId, payload);
@@ -1861,9 +1868,9 @@ async function updateLoanerStartDate(docId, roNo, value){
     if(!snap.exists){ showToast("데이터를 찾을 수 없습니다"); return; }
     const data = snap.data();
     const entries = (data.entries||[]).map(e=>({...e}));
-    const idx = entries.findIndex(e=>e.ro_no === roNo);
-    if(idx === -1){ showToast("해당 RO를 찾을 수 없습니다"); return; }
-    entries[idx].loaner_start_date = toSave;
+    const matches = entries.filter(e=>e.ro_no === roNo);
+    if(matches.length === 0){ showToast("해당 RO를 찾을 수 없습니다"); return; }
+    matches.forEach(e=>{ e.loaner_start_date = toSave; });
     const payload = { ...data, entries, submitted_at: new Date().toISOString() };
     await db.doc("sa_days/"+docId).set(payload);
     syncLocalSADoc(docId, payload);
@@ -1882,12 +1889,14 @@ async function returnLoanerCar(docId, roNo){
     if(!snap.exists){ showToast("데이터를 찾을 수 없습니다"); return; }
     const data = snap.data();
     const entries = (data.entries||[]).map(e=>({...e}));
-    const idx = entries.findIndex(e=>e.ro_no === roNo);
-    if(idx === -1){ showToast("해당 RO를 찾을 수 없습니다"); return; }
-    if(entries[idx].loaner_used === "O"){
-      entries[idx].loaner_used = "X";
-      if(!entries[idx].loaner_return_date) entries[idx].loaner_return_date = todayKST();
-    }
+    const matches = entries.filter(e=>e.ro_no === roNo);
+    if(matches.length === 0){ showToast("해당 RO를 찾을 수 없습니다"); return; }
+    matches.forEach(e=>{
+      if(e.loaner_used === "O"){
+        e.loaner_used = "X";
+        if(!e.loaner_return_date) e.loaner_return_date = todayKST();
+      }
+    });
     const payload = { ...data, entries, submitted_at: new Date().toISOString() };
     await db.doc("sa_days/"+docId).set(payload);
     syncLocalSADoc(docId, payload);
@@ -3138,6 +3147,7 @@ async function saveSAEntry(){
   if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
   const cleaned = saEntries.filter(e=>e.ro_no && e.ro_no.trim());
   cleaned.forEach(e=>{
+    e.ro_no = e.ro_no.trim(); // 앞뒤 공백이 섞이면 대시보드에서 같은 RO로 매칭이 안 될 수 있어 저장 시 정리합니다
     if(e.checkout_yn === "O" && e.loaner_used !== "X"){
       if(e.loaner_used === "O" && !e.loaner_return_date) e.loaner_return_date = todayKST();
       e.loaner_used = "X";
@@ -3145,6 +3155,16 @@ async function saveSAEntry(){
     // 포커스 아웃 없이 저장 버튼을 눌렀을 때를 대비한 안전장치: MM-DD로 남아있으면 YYYY-MM-DD로 변환
     if(/^\d{2}-\d{2}$/.test(e.return_date||"")) e.return_date = inferYearForMD(e.return_date, date);
   });
+  // 같은 RO번호가 이 날짜에 두 번 입력되면, 대시보드(숙박차량/재입고/로너카)에서
+  // 상태 변경 시 둘 중 하나만 반영되어 "처리해도 안 없어지는" 것처럼 보이는 문제가 생깁니다.
+  // 저장 전에 미리 걸러서 알려줍니다.
+  const roCounts = {};
+  cleaned.forEach(e=>{ roCounts[e.ro_no] = (roCounts[e.ro_no]||0) + 1; });
+  const dupRoNos = Object.keys(roCounts).filter(ro=>roCounts[ro] > 1);
+  if(dupRoNos.length > 0){
+    showToast(`같은 RO번호가 중복 입력되어 있습니다(${dupRoNos.join(", ")}) · 중복된 줄을 확인 후 삭제(✕)하고 다시 저장해주세요`);
+    return;
+  }
   if(cleaned.length !== saEntries.length){ saEntries = cleaned; renderSAEntryTable(); }
   const p = roster.sa.find(p=>p.id===personId);
   const id = saDocId(personId, date);
