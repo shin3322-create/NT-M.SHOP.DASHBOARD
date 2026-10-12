@@ -1035,6 +1035,11 @@ function clearBanner(){ document.getElementById("banner-slot").innerHTML = ""; }
 function bucketSA(entries){
   const b = {RETAIL:0,BSI:0,"W 보증":0,RECALL:0,"보험":0,"내부처리":0};
   let sp=0, wp=0, roCount=0, checkoutO=0, checkoutX=0, loanerCount=0, massRecall=0;
+  // 같은 RO번호를 BSI/일반/보증 등 항목별 금액으로 나눠 여러 줄 입력하는 것은 정상이지만,
+  // "RO 건수"·"출고 건수"·"로너카 대수"는 줄 수가 아니라 실제 차량(RO) 기준으로 한 번만 세야
+  // 합니다. 금액(b, sp, wp)은 줄마다 그대로 합산합니다.
+  const countSeen = new Set(); // RO 건수 집계용(대규모 리콜 제외)
+  const statusSeen = new Set(); // 출고/로너카 집계용
   for(const e of entries){
     if(!e.ro_no) continue;
     const amt = Number(e.amount)||0;
@@ -1042,15 +1047,18 @@ function bucketSA(entries){
       // 대규모 리콜은 매출 합계·RO 건수 집계에서 제외하고 별도 금액으로만 집계합니다.
       massRecall += amt;
     } else {
-      roCount++;
+      if(!countSeen.has(e.ro_no)){ countSeen.add(e.ro_no); roCount++; }
       if(e.svc_type === "SP판매"){ b.RETAIL += amt; sp++; }
       else if(e.svc_type === "WP판매"){ b.RETAIL += amt; wp++; }
       else if(e.svc_type in b){ b[e.svc_type] += amt; }
       else { b.RETAIL += amt; }
     }
-    if(e.checkout_yn === "O") checkoutO++;
-    else if(e.checkout_yn === "X") checkoutX++;
-    if(e.loaner_used === "O") loanerCount++;
+    if(!statusSeen.has(e.ro_no)){
+      statusSeen.add(e.ro_no);
+      if(e.checkout_yn === "O") checkoutO++;
+      else if(e.checkout_yn === "X") checkoutX++;
+      if(e.loaner_used === "O") loanerCount++;
+    }
   }
   const total = Object.values(b).reduce((a,c)=>a+c,0);
   return { total_sales: total, retail:b.RETAIL, bsi:b.BSI, warranty:b["W 보증"], recall:b.RECALL,
@@ -1402,12 +1410,16 @@ function aggregateReception(branchId, filterFn){
 }
 function countUnshippedSA(branchId, filterFn){
   // "미출고" = RO가 접수되었지만 출고(O) 처리되지 않은 차량 (숙박(X) 포함, 미기재 포함)
+  // 같은 RO를 BSI/일반/보증 등으로 나눠 여러 줄 입력해도 차량 1대로 한 번만 셉니다.
   let count = 0;
   for(const doc of saDocs.values()){
     if(branchId && doc.branch_slug !== branchId) continue;
     if(filterFn && !filterFn(doc.date)) continue;
+    const seen = new Set();
     for(const e of (doc.entries||[])){
       if(!e.ro_no) continue;
+      if(seen.has(e.ro_no)) continue;
+      seen.add(e.ro_no);
       if(e.checkout_yn !== "O") count++;
     }
   }
@@ -1508,9 +1520,13 @@ const RETURN_STATUS_BUTTONS = [
 ];
 function collectReturnVehicles(){
   const rows = [];
+  const seen = new Set(); // 같은 RO를 BSI/일반/보증 등으로 나눠 여러 줄 입력해도 한 번만 보여줍니다
   for(const [docId, doc] of allSADocEntries()){
     for(const e of (doc.entries||[])){
       if(e.return_date){
+        const key = docId + "|" + e.ro_no;
+        if(seen.has(key)) continue;
+        seen.add(key);
         rows.push({ docId, ro_no:e.ro_no, return_date:e.return_date, return_reason:e.return_reason||"",
                     return_status:e.return_status||"", branch:doc.branch_slug, sa_name:doc.sa_name,
                     sa_id:doc.sa_id, date:doc.date });
@@ -1606,9 +1622,13 @@ const STAY_STATUS_BUTTONS = [
 ];
 function collectStayingVehicles(){
   const rows = [];
+  const seen = new Set(); // 같은 RO를 BSI/일반/보증 등으로 나눠 여러 줄 입력해도 한 번만 보여줍니다
   for(const [docId, doc] of allSADocEntries()){
     (doc.entries||[]).forEach(e=>{
       if(e.checkout_yn === "X" && e.ro_no){
+        const key = docId + "|" + e.ro_no;
+        if(seen.has(key)) return;
+        seen.add(key);
         rows.push({
           docId, ro_no:e.ro_no, svc_type:e.svc_type||"",
           stay_reason:e.stay_reason||"", branch:doc.branch_slug, sa_name:doc.sa_name, date:doc.date,
@@ -3155,16 +3175,9 @@ async function saveSAEntry(){
     // 포커스 아웃 없이 저장 버튼을 눌렀을 때를 대비한 안전장치: MM-DD로 남아있으면 YYYY-MM-DD로 변환
     if(/^\d{2}-\d{2}$/.test(e.return_date||"")) e.return_date = inferYearForMD(e.return_date, date);
   });
-  // 같은 RO번호가 이 날짜에 두 번 입력되면, 대시보드(숙박차량/재입고/로너카)에서
-  // 상태 변경 시 둘 중 하나만 반영되어 "처리해도 안 없어지는" 것처럼 보이는 문제가 생깁니다.
-  // 저장 전에 미리 걸러서 알려줍니다.
-  const roCounts = {};
-  cleaned.forEach(e=>{ roCounts[e.ro_no] = (roCounts[e.ro_no]||0) + 1; });
-  const dupRoNos = Object.keys(roCounts).filter(ro=>roCounts[ro] > 1);
-  if(dupRoNos.length > 0){
-    showToast(`같은 RO번호가 중복 입력되어 있습니다(${dupRoNos.join(", ")}) · 중복된 줄을 확인 후 삭제(✕)하고 다시 저장해주세요`);
-    return;
-  }
+  // 같은 RO번호를 BSI/일반/보증 등 항목별로 금액을 나눠 여러 줄로 입력하는 것은 정상적인
+  // 사용 방식이라 중복 저장을 막지 않습니다. 숙박차량/재입고/로너카 상태 변경은 같은
+  // RO번호를 가진 줄 전체에 함께 반영되도록 별도로 처리되어 있습니다.
   if(cleaned.length !== saEntries.length){ saEntries = cleaned; renderSAEntryTable(); }
   const p = roster.sa.find(p=>p.id===personId);
   const id = saDocId(personId, date);
