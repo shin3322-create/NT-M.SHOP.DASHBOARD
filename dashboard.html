@@ -1152,10 +1152,10 @@ async function init(){
 /* 반영되려면 새로고침이 필요하므로 대시보드 화면(입력 중인 폼이 없는   */
 /* 화면)일 때만 주기적으로 자동 새로고침해서 최신 배포본을 불러옵니다.   */
 /* ---------------------------------------------------------------- */
-const AUTO_RELOAD_INTERVAL_MS = 15 * 60 * 1000; // 15분
+const AUTO_RELOAD_INTERVAL_MS = 60 * 60 * 1000; // 60분 (전송량 절감: 15분→60분, 숨겨진 탭은 생략)
 function scheduleAutoReload(){
   setInterval(()=>{
-    if(currentView === "dashboard"){
+    if(currentView === "dashboard" && !document.hidden){
       window.location.reload();
     }
   }, AUTO_RELOAD_INTERVAL_MS);
