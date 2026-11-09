@@ -1458,6 +1458,7 @@ function collectInputIssues(){
   const showToday = nowKSTHour() >= ISSUES_TODAY_SHOW_HOUR;
   for(const doc of saDocs.values()){
     if(doc.date < ISSUES_CUTOFF_DATE) continue;
+    if(doc.date > today) continue; // 내일 이후(미리 잡힌 예약 등)는 표시하지 않음
     if(doc.date === today && !showToday) continue;
     (doc.entries||[]).forEach(e=>{
       if(!e.ro_no) return;
@@ -1473,6 +1474,7 @@ function collectInputIssues(){
   }
   for(const doc of receptionDocs.values()){
     if(doc.date < ISSUES_CUTOFF_DATE) continue;
+    if(doc.date > today) continue; // 내일 이후(미리 잡힌 예약 등)는 표시하지 않음
     if(doc.date === today && !showToday) continue;
     (doc.entries||[]).forEach(e=>{
       if(!(e.customer || e.car_no || e.resv_no)) return;
@@ -1492,7 +1494,7 @@ function renderInputIssues(){
   const issues = collectInputIssues();
   const hint = document.getElementById("issues-hint");
   if(hint){
-    hint.textContent = `어드바이저·리셉션 입력 중 확인이 필요한 항목 · 이번 달 기준 · 당일 자료는 17시 이후부터 표시됩니다 · 문제를 해결하면 자동으로 목록에서 사라집니다 (${issues.length}건)`;
+    hint.textContent = `어드바이저·리셉션 입력 중 확인이 필요한 항목 · 이번 달 기준 · 당일 자료는 17시 이후부터 표시 · 내일 이후 예약은 제외 · 문제를 해결하면 자동으로 목록에서 사라집니다 (${issues.length}건)`;
   }
   const html = `
     <thead><tr><th>구분</th><th>지점</th><th>담당자</th><th>일자</th><th>RO/접수번호</th><th>문제</th><th style="width:70px;"></th></tr></thead>
