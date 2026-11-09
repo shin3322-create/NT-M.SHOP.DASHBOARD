@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>NT DMS 확장팩</title>
+<style>
+ body{font-family:"Malgun Gothic",sans-serif;width:340px;margin:0;padding:14px;font-size:13px;color:#222}
+ h1{font-size:15px;margin:0 0 10px} label{display:block;margin:8px 0 3px;font-weight:700;font-size:12px}
+ input{width:100%;box-sizing:border-box;padding:6px;border:1px solid #bbb;border-radius:4px;font-size:12px}
+ button{margin-top:10px;padding:7px 10px;border:0;border-radius:4px;background:#1c3c6e;color:#fff;cursor:pointer;font-weight:700}
+ button.sub{background:#eee;color:#222}
+ #st{margin-top:12px;padding:8px;border-radius:4px;background:#f3f3f3;white-space:pre-wrap;font-size:12px}
+ details{margin-top:8px} summary{cursor:pointer;color:#666;font-size:12px}
+</style></head><body>
+<h1>NT DMS 확장팩</h1>
+<label>확장팩 키 (처음 한 번만 입력)</label>
+<input id="token" type="password" placeholder="서버 PC의 data\dms_key.txt 값">
+<details><summary>서버 설정 (보통 바꿀 필요 없음)</summary>
+ <label>서버 주소</label><input id="url">
+ <label>공개 키</label><input id="anon">
+</details>
+<button id="save">저장</button> <button id="run" class="sub">지금 가져오기</button>
+<div id="st">상태 확인 중…</div>
+<script src="popup.js"></script>
+</body></html>
