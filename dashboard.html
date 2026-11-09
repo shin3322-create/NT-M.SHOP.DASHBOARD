@@ -1225,6 +1225,30 @@ function subscribeMonthData(dateStr){
   }catch(err){ console.warn(err); }
 
   loadCarryoverSADocs(start);
+  subscribeCarryoverChanges(start);
+}
+
+/* 이전 달(이월) 미해결 건이 다른 화면에서 수정됐을 때도 실시간 반영 */
+let carryoverChannel = null;
+function subscribeCarryoverChanges(monthStart){
+  if(!supabaseClient) return;
+  if(carryoverChannel){ try{ supabaseClient.removeChannel(carryoverChannel); }catch(e){} }
+  const cutoff = addMonthsStr(monthStart, -CARRYOVER_LOOKBACK_MONTHS);
+  carryoverChannel = supabaseClient
+    .channel("sa_carryover_" + Math.random().toString(36).slice(2))
+    .on("postgres_changes", { event:"*", schema:"public", table:"sa_days" }, (p)=>{
+      const row = p.new && p.new.id ? p.new : null;
+      const id = row ? row.id : (p.old && p.old.id);
+      if(!id) return;
+      if(!row){ if(carryoverSaDocs.delete(id)) renderDashboard(); return; }
+      if(!(row.date >= cutoff && row.date < monthStart)) return;
+      const hasOpenItem = (row.entries||[]).some(e =>
+        e.checkout_yn === "X" || !!e.return_date || (e.loaner_used === "O" && e.checkout_yn !== "O")
+      );
+      if(hasOpenItem) carryoverSaDocs.set(id, row); else carryoverSaDocs.delete(id);
+      renderDashboard();
+    })
+    .subscribe();
 }
 
 /* ---------------------------------------------------------------- */
