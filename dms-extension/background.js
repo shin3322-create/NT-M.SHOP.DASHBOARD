@@ -61,11 +61,14 @@ const todayKST = () => new Date(Date.now() + 9*3600e3).toISOString().slice(0,10)
 const pick = (v, list, def) => list.includes(s(v)) ? s(v) : def;
 /* 직원이 손으로 고친 값은 덮어쓰지 않음:
    현재 값이 비어 있거나, 지난번 확장팩이 넣은 값 그대로일 때만 새 값으로 바꿈 */
+// 직원이 기본값 그대로 둔 경우(예: 상태 '예약접수')는 DMS 최신 상태로 바꿔도 됨
+const DEFAULT_VALUES = { status: ["예약접수"] };
 function setTracked(e, field, val){
   e._dms = e._dms || {};
   const cur = e[field] === undefined ? "" : e[field];
   const last = e._dms[field];
-  if (cur === "" || cur === null || (last !== undefined && String(cur) === String(last))) {
+  const isDefault = (DEFAULT_VALUES[field] || []).includes(String(cur));
+  if (cur === "" || cur === null || isDefault || (last !== undefined && String(cur) === String(last))) {
     e[field] = val;
     e._dms[field] = val;
   }
@@ -152,10 +155,11 @@ async function sync(ro, resv){
       // 출고: RO상태 '인보이스 완료'면 O (그 전에는 SA 수기 값 유지)
       if (s(r.roStat) === "인보이스 완료"){
         for (const e of lines){
-          if (e.checkout_yn !== "O"){
-            e.checkout_yn = "O";
+          if (e.checkout_yn !== "O") e.checkout_yn = "O";
+          // 대시보드 '일마감 저장'과 같은 규칙: 출고 O면 로너카는 X(사용 중이었다면 반납일 기록)
+          if (e.loaner_used !== "X"){
             if (e.loaner_used === "O" && !e.loaner_return_date) e.loaner_return_date = todayKST();
-            if (e.loaner_used && e.loaner_used !== "X") e.loaner_used = "X";
+            e.loaner_used = "X";
           }
         }
       }
