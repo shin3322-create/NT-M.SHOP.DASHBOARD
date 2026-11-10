@@ -353,6 +353,7 @@
         <button type="button" class="btn ghost sm" id="dash-date-reset-btn" style="display:none;padding:2px 7px;">오늘</button>
       </div>
       <span id="clock-status">연결 중…<span id="identity-label"></span></span>
+      <span id="dms-sync-status" style="display:block;font-size:11px;margin-top:2px;color:var(--muted, #888)"></span>
       <button class="btn ghost sm" id="logout-btn" style="margin-top:6px;">로그아웃</button>
     </div>
   </header>
@@ -1134,6 +1135,7 @@ async function init(){
   setDefaultDates();
 
   document.getElementById("clock-status").textContent = "실시간 연결됨";
+  startDmsSyncStatus();
   clearBanner();
   subscribeConfig();
   subscribeMonthData(todayKST());
@@ -1450,6 +1452,29 @@ function countUnshippedSA(branchId, filterFn){
   return count;
 }
 
+/* DMS 확장팩 마지막 자동 입력 시각 표시 (업무시간에 20분 넘게 멈추면 빨간색) */
+function startDmsSyncStatus(){
+  const el = document.getElementById("dms-sync-status");
+  if(!el || !supabaseClient) return;
+  const tick = async ()=>{
+    if(document.hidden) return;
+    try{
+      const { data, error } = await supabaseClient.rpc("dms_last_sync");
+      if(error || !data){ el.textContent = ""; return; }
+      const t = new Date(data);
+      const mins = Math.round((Date.now() - t.getTime())/60000);
+      const hm = t.toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Asia/Seoul"});
+      const h = nowKSTHour();
+      const late = mins > 20 && h >= 8 && h < 19;
+      el.textContent = late ? `⚠ DMS 자동입력 멈춤 (마지막 ${hm}) · DMS 로그인 확인` : `DMS 자동입력 ${hm}`;
+      el.style.color = late ? "#d93025" : "";
+      el.style.fontWeight = late ? "700" : "";
+    }catch(e){ el.textContent = ""; }
+  };
+  tick();
+  setInterval(tick, 5*60*1000);
+  document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) tick(); });
+}
 const ISSUES_CUTOFF_DATE = "2026-09-13"; // 이 날짜 이전 자료는 "입력 수정 필요" 목록에서 제외
 const ISSUES_TODAY_SHOW_HOUR = 17; // 당일 자료는 이 시각(KST) 이후부터 "입력 수정 필요"에 표시
 function collectInputIssues(){

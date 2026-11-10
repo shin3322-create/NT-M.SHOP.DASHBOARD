@@ -67,6 +67,11 @@ revoke all on function public.dms_pull(text, text[], text[]) from public;
 revoke all on function public.dms_push(text, jsonb, jsonb, jsonb) from public;
 grant execute on function public.dms_pull(text, text[], text[]) to anon, authenticated;
 grant execute on function public.dms_push(text, jsonb, jsonb, jsonb) to anon, authenticated;
+-- 대시보드 상단에 표시할 '마지막 자동 입력 시각' (로그인한 직원만 조회)
+create or replace function public.dms_last_sync() returns timestamptz
+language sql security definer set search_path = '' as $$ select max(at) from nt_private.dms_log; $$;
+revoke all on function public.dms_last_sync() from public, anon;
+grant execute on function public.dms_last_sync() to authenticated;
 notify pgrst, 'reload schema';
 SQL
 printf '%s' "$KEY" > "$KEY_FILE"

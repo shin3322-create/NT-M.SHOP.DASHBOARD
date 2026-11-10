@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NT DMS 확장팩",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "DMS NEXT의 RO 리포트·예약 현황을 AS 대시보드(SA/리셉션)에 자동 입력합니다.",
   "permissions": ["storage"],
   "host_permissions": [

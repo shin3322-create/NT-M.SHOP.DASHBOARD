@@ -130,7 +130,14 @@ async function sync(ro, resv){
     rcPlan.get(id).rows.push(r);
   }
 
-  const cur = await rpc(c, "dms_pull", { p_token: c.token, p_sa_ids: [...saPlan.keys()], p_rc_ids: [...rcPlan.keys()] });
+  // 예약일이 바뀐 예약(예: 11/9 → 11/10)이 옛 날짜에 남지 않도록, 조회 기간의 리셉션 문서를 모두 함께 읽음
+  const resvTarget = new Map();   // 예약번호 -> 현재 들어가야 할 문서 id
+  for (const [id, plan] of rcPlan) for (const r of plan.rows) resvTarget.set(s(r.resvNo), id);
+  const windowIds = new Set(rcPlan.keys());
+  for (const b of Object.values(BRANCH_BY_NAME))
+    for (let d = -3; d <= 7; d++) windowIds.add(`${b}_${new Date(Date.now() + (9*3600 + d*86400)*1000).toISOString().slice(0,10)}`);
+
+  const cur = await rpc(c, "dms_pull", { p_token: c.token, p_sa_ids: [...saPlan.keys()], p_rc_ids: [...windowIds] });
   const saOut = [], rcOut = [];
 
   for (const [id, plan] of saPlan){
@@ -197,6 +204,24 @@ async function sync(ro, resv){
               : (roster.reception.find(p => p.branch === plan.branch) || { name: "DMS 자동", id: "dms_auto" });
     rcOut.push({ id, branch_slug: plan.branch, manager: mgr.name, manager_id: mgr.id, date: plan.date,
                  entries, summary: summarizeReception(entries), base_submitted_at: old ? old.submitted_at : null });
+  }
+
+  // 옛 날짜 문서에 남아 있는 '확장팩이 넣은' 예약 줄 정리 (직원이 직접 입력한 줄은 건드리지 않음)
+  const outIds = new Set(rcOut.map(d => d.id));
+  for (const [id, old] of Object.entries(cur.rc || {})){
+    if (outIds.has(id)) continue;
+    const entries = (old.entries || []).filter(e => {
+      const t = resvTarget.get(s(e.resv_no));
+      return !(e._dms && e._dms.src === "dms" && t && t !== id);
+    });
+    if (entries.length === (old.entries || []).length) continue;
+    rcOut.push({ id, branch_slug: old.branch_slug, manager: old.manager, manager_id: old.manager_id, date: old.date,
+                 entries, summary: summarizeReception(entries), base_submitted_at: old.submitted_at });
+  }
+  // 이번에 갱신한 문서 안에서도 다른 날짜로 옮겨간 예약 줄 제거
+  for (const d of rcOut){
+    d.entries = d.entries.filter(e => { const t = resvTarget.get(s(e.resv_no)); return !(e._dms && e._dms.src === "dms" && t && t !== d.id); });
+    d.summary = summarizeReception(d.entries);
   }
 
   let res = { sa: 0, rc: 0 };
