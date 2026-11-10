@@ -132,13 +132,19 @@ async function sync(ro, resv){
   }
 
   // 예약일이 바뀐 예약(예: 11/9 → 11/10)이 옛 날짜에 남지 않도록, 조회 기간의 리셉션 문서를 모두 함께 읽음
-  const resvTarget = new Map();   // 예약번호 -> 현재 들어가야 할 문서 id
-  for (const [id, plan] of rcPlan) for (const r of plan.rows) resvTarget.set(s(r.resvNo), id);
+  const resvTarget = new Map();   // "지점|예약번호" -> 현재 들어가야 할 문서 id (예약번호는 지점마다 따로 매겨짐)
+  for (const [id, plan] of rcPlan) for (const r of plan.rows) resvTarget.set(plan.branch + "|" + s(r.resvNo), id);
+  // SA: RO 담당자/입고일이 바뀐 경우 옛 문서의 자동 입력 줄 정리용
+  const roTarget = new Map();     // "지점|RO번호" -> 문서 id
+  for (const [id, plan] of saPlan) for (const r of plan.rows) roTarget.set(plan.person.branch + "|" + s(r.roNm), id);
+  const saWindowIds = new Set(saPlan.keys());
+  for (const p of roster.sa) for (let d = -7; d <= 0; d++)
+    saWindowIds.add(`${p.branch}_${p.id}_${new Date(Date.now() + (9*3600 + d*86400)*1000).toISOString().slice(0,10)}`);
   const windowIds = new Set(rcPlan.keys());
   for (const b of Object.values(BRANCH_BY_NAME))
     for (let d = -3; d <= 7; d++) windowIds.add(`${b}_${new Date(Date.now() + (9*3600 + d*86400)*1000).toISOString().slice(0,10)}`);
 
-  const cur = await rpc(c, "dms_pull", { p_token: c.token, p_sa_ids: [...saPlan.keys()], p_rc_ids: [...windowIds] });
+  const cur = await rpc(c, "dms_pull", { p_token: c.token, p_sa_ids: [...saWindowIds], p_rc_ids: [...windowIds] });
   const saOut = [], rcOut = [];
 
   for (const [id, plan] of saPlan){
@@ -212,7 +218,7 @@ async function sync(ro, resv){
   for (const [id, old] of Object.entries(cur.rc || {})){
     if (outIds.has(id)) continue;
     const entries = (old.entries || []).filter(e => {
-      const t = resvTarget.get(s(e.resv_no));
+      const t = resvTarget.get(old.branch_slug + "|" + s(e.resv_no));
       return !(e._dms && e._dms.src === "dms" && t && t !== id);
     });
     if (entries.length === (old.entries || []).length) continue;
@@ -221,8 +227,25 @@ async function sync(ro, resv){
   }
   // 이번에 갱신한 문서 안에서도 다른 날짜로 옮겨간 예약 줄 제거
   for (const d of rcOut){
-    d.entries = d.entries.filter(e => { const t = resvTarget.get(s(e.resv_no)); return !(e._dms && e._dms.src === "dms" && t && t !== d.id); });
+    d.entries = d.entries.filter(e => { const t = resvTarget.get(d.branch_slug + "|" + s(e.resv_no)); return !(e._dms && e._dms.src === "dms" && t && t !== d.id); });
     d.summary = summarizeReception(d.entries);
+  }
+
+  // SA: 다른 SA·다른 날짜로 옮겨간 RO의 '확장팩이 넣은' 줄을 옛 문서에서 제거 (SA가 직접 입력한 줄은 유지)
+  const saOutIds = new Set(saOut.map(d => d.id));
+  for (const [id, old] of Object.entries(cur.sa || {})){
+    if (saOutIds.has(id)) continue;
+    const entries = (old.entries || []).filter(e => {
+      const t = roTarget.get(old.branch_slug + "|" + s(e.ro_no));
+      return !(e._dms && e._dms.src === "dms" && t && t !== id);
+    });
+    if (entries.length === (old.entries || []).length) continue;
+    saOut.push({ id, branch_slug: old.branch_slug, sa_id: old.sa_id, sa_name: old.sa_name, date: old.date,
+                 entries, summary: bucketSA(entries), base_submitted_at: old.submitted_at });
+  }
+  for (const d of saOut){
+    d.entries = d.entries.filter(e => { const t = roTarget.get(d.branch_slug + "|" + s(e.ro_no)); return !(e._dms && e._dms.src === "dms" && t && t !== d.id); });
+    d.summary = bucketSA(d.entries);
   }
 
   let res = { sa: 0, rc: 0 };

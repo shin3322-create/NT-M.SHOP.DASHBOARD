@@ -76,7 +76,7 @@
       const byAcpt = await fetchAll(RV_URL, RV_VIEW, Object.assign({}, rvBase, {
         sSelectDt: "carAcptDt", sSearchStartDt: startIso(ymd(addDays(-RV_DAYS_BACK))), sSearchEndDt: endIso(today) }));
       const seen = new Set(); const resv = [];
-      for (const r of [...byAcpt, ...byResv]) { if (seen.has(r.resvNo)) continue; seen.add(r.resvNo); resv.push(r); }
+      for (const r of [...byAcpt, ...byResv]) { const k = r.resvBrch + "|" + r.resvNo; if (seen.has(k)) continue; seen.add(k); resv.push(r); }  // 예약번호는 지점마다 따로 매겨짐
       post({ type: "data", reason, ro, resv, at: new Date().toISOString() });
     } catch (e) {
       post({ type: "status", ok: false, msg: String(e.message || e) });
