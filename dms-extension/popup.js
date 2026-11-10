@@ -9,7 +9,7 @@ async function load(){
   show(c.status);
 }
 function show(st){
-  if (!st) { $("st").textContent = "아직 실행 기록이 없습니다.\nDMS에 로그인해 두면 10분마다 자동으로 가져옵니다."; return; }
+  if (!st) { $("st").textContent = "아직 실행 기록이 없습니다.\nDMS에 로그인해 두면 5분마다 자동으로 가져옵니다."; return; }
   const t = new Date(st.at).toLocaleString("ko-KR");
   $("st").textContent = (st.ok ? "✅ 정상" : "⚠️ 확인 필요") + "  (" + t + ")\n" + (st.msg || "");
 }

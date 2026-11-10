@@ -2,7 +2,7 @@
 (function(){
   "use strict";
   if (window.__ntDmsLoaded) return; window.__ntDmsLoaded = true;
-  const INTERVAL_MS = 10 * 60 * 1000;          // 10분마다
+  const INTERVAL_MS = 5 * 60 * 1000;           // 5분마다
   const DEALER = "001632";                      // 내쇼날 모터스
   const BRANCHES = ["38", "36", "35"];          // AS 지점 3곳 (서산/목포/군산)
   const RO_URL = "/rpt/raw/selectRawRoRptList.do", RO_VIEW = "VIEW-D-23765";
