@@ -11,6 +11,11 @@
   const RV_DAYS_BACK = 3, RV_DAYS_FWD = 7;      // 예약: 예약일 기준 -3일 ~ +7일
   const PAGE = 1000;
   let running = false;
+  const RV_BASE = {
+        sBrands: [], sSeriesList: [], sCarNo: "", sVinNo: "", sCustNm: "", sResvCustNm: "", sRoNo: "", sResvNo: "", sCustTp: "",
+        sExcellence: "", sVocRcv: "", sDlrCd: DEALER, sBrchCdList: BRANCHES, sSalDlrCd: "", sSalBrchCdList: [], sAcepters: [],
+        sSaList: [], sRcptType: "", sResvType: "", sSvcTypes: [], sDqRcrNoti: "", sResvMobility: "", sRclTcResv: "",
+        sRclTcTarget: "", sRclTcCampnNm: "", sResvCampn: "", sCampnNm: "" };
 
   const ymd = (d) => new Date(d.getTime() + 9*3600e3).toISOString().slice(0,10);
   const addDays = (n) => new Date(Date.now() + n*86400e3);
@@ -64,16 +69,12 @@
         sBrands: [], sVinNo: "", sCarNo: "", sSeriesList: [], sCustTp: "", sCustNo: "", sCustNm: "", sDlrCd: DEALER,
         sBrchCdList: BRANCHES, sSaList: [], sTechNms: [], sRoNo: "", sRoStat: "", sSvcTypes: [], sCustCarYn: "", sDqRcrNoti: "",
         sCalcTpCd: "", sCalcTpCds: [], sRclTcApply: "", sCampnApply: "", sCupnApply: "", sSvcTp: "", sExcludeCaseTargetYn: "N", sLeadTimeUnit: "HOURS" });
-      const rvBase = {
-        sBrands: [], sSeriesList: [], sCarNo: "", sVinNo: "", sCustNm: "", sResvCustNm: "", sRoNo: "", sResvNo: "", sCustTp: "",
-        sExcellence: "", sVocRcv: "", sDlrCd: DEALER, sBrchCdList: BRANCHES, sSalDlrCd: "", sSalBrchCdList: [], sAcepters: [],
-        sSaList: [], sRcptType: "", sResvType: "", sSvcTypes: [], sDqRcrNoti: "", sResvMobility: "", sRclTcResv: "",
-        sRclTcTarget: "", sRclTcCampnNm: "", sResvCampn: "", sCampnNm: "" };
+
       // ① 예약일 기준 (-3일 ~ +7일)
-      const byResv = await fetchAll(RV_URL, RV_VIEW, Object.assign({}, rvBase, {
+      const byResv = await fetchAll(RV_URL, RV_VIEW, Object.assign({}, RV_BASE, {
         sSelectDt: "resvDt", sSearchStartDt: startIso(ymd(addDays(-RV_DAYS_BACK))), sSearchEndDt: endIso(ymd(addDays(RV_DAYS_FWD))) }));
       // ② 차량접수일 기준 (최근 3일) — 예약일이 오래됐거나 다른 날인데 오늘 들어온 차까지 포함
-      const byAcpt = await fetchAll(RV_URL, RV_VIEW, Object.assign({}, rvBase, {
+      const byAcpt = await fetchAll(RV_URL, RV_VIEW, Object.assign({}, RV_BASE, {
         sSelectDt: "carAcptDt", sSearchStartDt: startIso(ymd(addDays(-RV_DAYS_BACK))), sSearchEndDt: endIso(today) }));
       const seen = new Set(); const resv = [];
       for (const r of [...byAcpt, ...byResv]) { const k = r.resvBrch + "|" + r.resvNo; if (seen.has(k)) continue; seen.add(k); resv.push(r); }  // 예약번호는 지점마다 따로 매겨짐
@@ -99,8 +100,8 @@
       } catch(e){}
     }
     const today = ymd(new Date());
-    postText(RV_URL, RV_VIEW, { recordCountPerPage: 1, pageIndex: 1, firstIndex: 0, lastIndex: 1, sort: [],
-      sSelectDt: "resvDt", sSearchStartDt: startIso(today), sSearchEndDt: endIso(today), sDlrCd: DEALER, sBrchCdList: BRANCHES })
+    postText(RV_URL, RV_VIEW, Object.assign({}, RV_BASE, { recordCountPerPage: 1, pageIndex: 1, firstIndex: 0, lastIndex: 1, sort: [],
+      sSelectDt: "resvDt", sSearchStartDt: startIso(today), sSearchEndDt: endIso(today) }))
       .catch(() => {});
   }
   setInterval(keepAlive, 5 * 60 * 1000);

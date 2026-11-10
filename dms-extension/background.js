@@ -248,11 +248,9 @@ async function sync(ro, resv){
     d.summary = bucketSA(d.entries);
   }
 
-  let res = { sa: 0, rc: 0 };
-  if (saOut.length || rcOut.length){
-    res = await rpc(c, "dms_push", { p_token: c.token, p_sa: saOut, p_rc: rcOut,
-                                     p_info: { ro: ro.length, resv: resv.length, skipped: skipped.slice(0, 30) } });
-  }
+  // 바뀐 게 없어도 매번 기록 → 대시보드의 'DMS 자동입력 시각'이 정상 동작 중임을 알 수 있게 함
+  const res = await rpc(c, "dms_push", { p_token: c.token, p_sa: saOut, p_rc: rcOut,
+                                         p_info: { ro: ro.length, resv: resv.length, skipped: skipped.slice(0, 30) } });
   return { ro: ro.length, resv: resv.length, saDocs: res.sa, rcDocs: res.rc, skipped: skipped.length };
 }
 
