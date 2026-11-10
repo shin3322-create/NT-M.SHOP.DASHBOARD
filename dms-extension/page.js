@@ -22,14 +22,29 @@
     try { return window.jQuery && window.jQuery.ajaxSettings.headers && window.jQuery.ajaxSettings.headers["X-AjaxRequest"]; }
     catch(e){ return null; }
   }
+  /* 업무시간(08~18시)에는 DMS 자체 jQuery로 요청 → DMS가 '사용 중'으로 인식해 자동 로그아웃 시간이 연장되도록 함
+     업무시간 밖에는 일반 fetch로 요청 → 로그아웃 시간에 영향 없음 */
+  const WORK_START = 8, WORK_END = 18;
+  const kstHour = () => new Date(Date.now() + 9*3600e3).getUTCHours();
+  const inWork = () => { const h = kstHour(); return h >= WORK_START && h < WORK_END; };
+  function postText(url, view, body){
+    const $ = window.jQuery;
+    if (inWork() && $ && $.ajax){
+      return new Promise((resolve, reject) => {
+        $.ajax({ url, type: "POST", contentType: "application/json", dataType: "text", global: true,
+                 headers: { "Client-Frame-Viewid": view }, data: JSON.stringify(body),
+                 success: (t) => resolve(t), error: (x) => reject(new Error("DMS 요청 실패 " + x.status)) });
+      });
+    }
+    return fetch(url, { method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json", "X-AjaxRequest": ajaxToken(), "Client-TimeZone-Offset": "540", "Client-Frame-Viewid": view },
+      body: JSON.stringify(body) }).then(r => r.text());
+  }
   async function fetchAll(url, view, base){
     const out = [];
     for (let page = 1; page <= 20; page++){
       const body = Object.assign({}, base, { recordCountPerPage: PAGE, pageIndex: page, firstIndex: (page-1)*PAGE, lastIndex: page*PAGE, sort: [] });
-      const r = await fetch(url, { method: "POST", credentials: "include",
-        headers: { "Content-Type": "application/json", "X-AjaxRequest": ajaxToken(), "Client-TimeZone-Offset": "540", "Client-Frame-Viewid": view },
-        body: JSON.stringify(body) });
-      const t = await r.text();
+      const t = await postText(url, view, body);
       if (!t.trim().startsWith("{")) throw new Error("DMS 응답 오류(로그아웃 또는 권한 문제)");
       const j = JSON.parse(t);
       const rows = j.data || [];
@@ -63,6 +78,26 @@
   window.addEventListener("message", (ev) => {
     if (ev.source === window && ev.data && ev.data.source === "nt-dms-cmd" && ev.data.cmd === "run") run("manual");
   });
+  /* 로그인 유지: 업무시간에 5분마다 '사용 중' 신호 (마우스 이동·키 입력 흉내 + 가벼운 조회 1건) */
+  function keepAlive(){
+    if (!inWork() || !ajaxToken()) return;
+    const docs = [document];
+    document.querySelectorAll("iframe").forEach(f => { try { if (f.contentDocument) docs.push(f.contentDocument); } catch(e){} });
+    for (const d of docs){
+      try {
+        const w = d.defaultView || window;
+        d.dispatchEvent(new w.MouseEvent("mousemove", { bubbles: true, clientX: 5, clientY: 5 }));
+        d.dispatchEvent(new w.KeyboardEvent("keydown", { bubbles: true, key: "Shift", code: "ShiftLeft" }));
+        d.dispatchEvent(new w.KeyboardEvent("keyup", { bubbles: true, key: "Shift", code: "ShiftLeft" }));
+      } catch(e){}
+    }
+    const today = ymd(new Date());
+    postText(RV_URL, RV_VIEW, { recordCountPerPage: 1, pageIndex: 1, firstIndex: 0, lastIndex: 1, sort: [],
+      sSelectDt: "resvDt", sSearchStartDt: startIso(today), sSearchEndDt: endIso(today), sDlrCd: DEALER, sBrchCdList: BRANCHES })
+      .catch(() => {});
+  }
+  setInterval(keepAlive, 5 * 60 * 1000);
+
   setTimeout(() => run("start"), 20 * 1000);
   setInterval(() => run("timer"), INTERVAL_MS);
 })();
