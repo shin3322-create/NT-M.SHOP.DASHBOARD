@@ -64,12 +64,19 @@
         sBrands: [], sVinNo: "", sCarNo: "", sSeriesList: [], sCustTp: "", sCustNo: "", sCustNm: "", sDlrCd: DEALER,
         sBrchCdList: BRANCHES, sSaList: [], sTechNms: [], sRoNo: "", sRoStat: "", sSvcTypes: [], sCustCarYn: "", sDqRcrNoti: "",
         sCalcTpCd: "", sCalcTpCds: [], sRclTcApply: "", sCampnApply: "", sCupnApply: "", sSvcTp: "", sExcludeCaseTargetYn: "N", sLeadTimeUnit: "HOURS" });
-      const resv = await fetchAll(RV_URL, RV_VIEW, {
-        sSelectDt: "resvDt", sSearchStartDt: startIso(ymd(addDays(-RV_DAYS_BACK))), sSearchEndDt: endIso(ymd(addDays(RV_DAYS_FWD))),
+      const rvBase = {
         sBrands: [], sSeriesList: [], sCarNo: "", sVinNo: "", sCustNm: "", sResvCustNm: "", sRoNo: "", sResvNo: "", sCustTp: "",
         sExcellence: "", sVocRcv: "", sDlrCd: DEALER, sBrchCdList: BRANCHES, sSalDlrCd: "", sSalBrchCdList: [], sAcepters: [],
         sSaList: [], sRcptType: "", sResvType: "", sSvcTypes: [], sDqRcrNoti: "", sResvMobility: "", sRclTcResv: "",
-        sRclTcTarget: "", sRclTcCampnNm: "", sResvCampn: "", sCampnNm: "" });
+        sRclTcTarget: "", sRclTcCampnNm: "", sResvCampn: "", sCampnNm: "" };
+      // ① 예약일 기준 (-3일 ~ +7일)
+      const byResv = await fetchAll(RV_URL, RV_VIEW, Object.assign({}, rvBase, {
+        sSelectDt: "resvDt", sSearchStartDt: startIso(ymd(addDays(-RV_DAYS_BACK))), sSearchEndDt: endIso(ymd(addDays(RV_DAYS_FWD))) }));
+      // ② 차량접수일 기준 (최근 3일) — 예약일이 오래됐거나 다른 날인데 오늘 들어온 차까지 포함
+      const byAcpt = await fetchAll(RV_URL, RV_VIEW, Object.assign({}, rvBase, {
+        sSelectDt: "carAcptDt", sSearchStartDt: startIso(ymd(addDays(-RV_DAYS_BACK))), sSearchEndDt: endIso(today) }));
+      const seen = new Set(); const resv = [];
+      for (const r of [...byAcpt, ...byResv]) { if (seen.has(r.resvNo)) continue; seen.add(r.resvNo); resv.push(r); }
       post({ type: "data", reason, ro, resv, at: new Date().toISOString() });
     } catch (e) {
       post({ type: "status", ok: false, msg: String(e.message || e) });

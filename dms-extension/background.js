@@ -123,7 +123,8 @@ async function sync(ro, resv){
   const rcPlan = new Map();
   for (const r of resv){
     const branch = BRANCH_BY_NAME[s(r.resvBrch)];
-    const date = datePart(r.resvDt);
+    // 입고된 차는 '실제 입고일' 문서에, 아직 안 온 예약은 '예약일' 문서에 넣음
+    const date = datePart(r.vehicAcptDt) || datePart(r.resvDt);
     if (!branch || !date || !s(r.resvNo)) continue;
     const id = `${branch}_${date}`;
     if (!rcPlan.has(id)) rcPlan.set(id, { branch, date, rows: [] });
