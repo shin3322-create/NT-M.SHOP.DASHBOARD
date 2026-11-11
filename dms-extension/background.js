@@ -200,7 +200,17 @@ async function sync(ro, resv){
               receiver: s(r.resvAcpter), _dms: { status, checkin_yn: checkin, src: "dms" } };
         entries.push(e);
       } else {
-        setTracked(e, "status", status);
+        const staffRow = !(e._dms && e._dms.src === "dms");
+        const staffSetCheckin = staffRow && e.checkin_yn && !(e._dms && e._dms.checkin_yn === e.checkin_yn);
+        // 직원이 입고 O/X를 직접 정한 줄은 상태를 바꾸지 않음 (예: 예약 재생성으로 DMS엔 '예약취소'지만 실제 입고한 차)
+        if (staffSetCheckin) {
+          // 1.0.1~1.0.6이 잘못 바꿔 둔 상태 되돌리기: 입고 O인데 DMS 값으로 '예약취소/No Show'가 된 직원 줄 → '예약접수'
+          if (e.checkin_yn === "O" && e._dms && e._dms.status === e.status && (e.status === "예약취소" || e.status === "No Show")) {
+            e.status = "예약접수"; delete e._dms.status;
+          }
+        } else {
+          setTracked(e, "status", status);
+        }
         setTracked(e, "checkin_yn", checkin);
         if (!e.checkin_dt) e.checkin_dt = hhmm(r.vehicAcptDt);
         if (!e.resv_dt) e.resv_dt = hhmm(r.resvDt);
