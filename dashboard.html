@@ -1511,7 +1511,10 @@ function collectInputIssues(){
                       date:doc.date, ref:e.resv_no || e.customer || e.car_no };
       if(!e.customer || !e.car_no || !e.resv_no) issues.push({ ...base, msg:"필수 항목 누락(고객명/차량번호/접수번호)" });
       // 입력 화면과 같은 기준: 입고 O(실제 들어온 차)면 사유 칸이 잠겨 입력할 수 없으므로 검사하지 않음
-      if((e.status === "예약취소" || e.status === "No Show") && e.checkin_yn !== "O" && !e.cancel_reason) issues.push({ ...base, msg:"취소/노쇼 사유 누락" });
+      // DMS에서 온 예약취소는 '예약일 당일 취소'만 사유 입력 대상 (예약일 이전 사전 취소는 제외)
+      const cancelAt = e._dms && e._dms.cancel_at;
+      const advanceCancel = e.status === "예약취소" && cancelAt && cancelAt !== doc.date;
+      if((e.status === "예약취소" || e.status === "No Show") && e.checkin_yn !== "O" && !advanceCancel && !e.cancel_reason) issues.push({ ...base, msg:"취소/노쇼 사유 누락" });
       if(e.rebook === "O" && !e.rebook_dt) issues.push({ ...base, msg:"재예약일자 누락" });
     });
   }

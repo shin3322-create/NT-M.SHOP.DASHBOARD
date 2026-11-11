@@ -193,6 +193,8 @@ async function sync(ro, resv){
       const status = walkin ? "비예약" : pick(r.resvType, RC_STATUS, "예약접수");
       const checkin = s(r.resvType) === "차량접수" ? "O" : (s(r.resvType) === "No Show" ? "X" : "");
       let e = entries.find(x => s(x.resv_no) === resvNo);
+      const isNew = !e;
+      const prevStatus = e ? e.status : "";
       if (!e){
         e = { resv_dt: hhmm(r.resvDt), checkin_dt: hhmm(r.vehicAcptDt), resv_no: resvNo, customer: s(r.custNm), car_no: s(r.carNo),
               vin: s(r.vinNo), model: s(r.model), svc_type: pick(r.svcType, RC_SERVICE_TYPES, "Maintenance"), status,
@@ -214,6 +216,13 @@ async function sync(ro, resv){
         setTracked(e, "checkin_yn", checkin);
         if (!e.checkin_dt) e.checkin_dt = hhmm(r.vehicAcptDt);
         if (!e.resv_dt) e.resv_dt = hhmm(r.resvDt);
+      }
+      // 취소를 처음 확인한 날짜 기록 → 대시보드에서 '예약일 당일 취소'만 사유 입력 대상으로 봄
+      // (확장팩 1.0.8 이전부터 이미 취소돼 있던 건은 언제 취소됐는지 알 수 없어 'legacy'로 표시 → 사전 취소로 간주)
+      const cancelFromDms = e._dms && (e._dms.src === "dms" || e._dms.status === "예약취소");   // 직원이 직접 취소로 적은 줄은 제외
+      if (e.status === "예약취소" && cancelFromDms && !e._dms.cancel_at) {
+        e._dms = e._dms || {};
+        e._dms.cancel_at = (!isNew && prevStatus === "예약취소") ? "legacy" : todayKST();
       }
     }
     if (JSON.stringify(entries) === before) continue;
