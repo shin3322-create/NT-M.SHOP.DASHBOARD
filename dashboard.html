@@ -246,6 +246,10 @@
     background:var(--surface); color:var(--text-primary); font-size:12.5px;
   }
   .entry-table td{ vertical-align:middle; }
+  /* 리셉션 예약 목록: 칸 너비 고정 → 접수번호·차량번호 등이 잘리지 않고 줄마다 같은 길이 */
+  #rc-entry-table{ table-layout:fixed; width:100%; min-width:1290px; }
+  #rc-entry-table th, #rc-entry-table td{ padding-left:4px; padding-right:4px; }
+  #rc-entry-table input, #rc-entry-table select{ padding:6px 5px; text-overflow:ellipsis; }
   .toggle-oxo{ display:flex; gap:3px; }
   .toggle-oxo button{
     border:1px solid var(--border); background:var(--surface); color:var(--text-secondary);
@@ -644,10 +648,10 @@
       <div class="table-wrap" style="margin-top:10px;">
         <table class="data entry-table" id="rc-entry-table">
           <thead><tr>
-            <th style="width:34px;">#</th><th style="width:88px;">예약 시간</th><th style="width:120px;">접수번호</th>
-            <th style="width:110px;">고객명</th><th style="width:110px;">차량번호</th><th style="width:130px;">모델</th><th style="width:150px;">서비스 타입</th>
-            <th style="width:110px;">상태</th><th style="width:100px;">픽딜/입고</th><th style="width:70px;">입고</th>
-            <th style="width:170px;">사유/비고</th><th style="width:70px;">재예약</th><th style="width:120px;">재예약 일자</th><th style="width:36px;"></th>
+            <th style="width:30px;">#</th><th style="width:108px;">예약 시간</th><th style="width:124px;">접수번호</th>
+            <th style="width:80px;">고객명</th><th style="width:100px;">차량번호</th><th style="width:130px;">모델</th><th style="width:150px;">서비스 타입</th>
+            <th style="width:96px;">상태</th><th style="width:92px;">픽딜/입고</th><th style="width:72px;">입고</th>
+            <th style="width:130px;">사유/비고</th><th style="width:62px;">재예약</th><th style="width:76px;">재예약 일자</th><th style="width:40px;"></th>
           </tr></thead>
           <tbody id="rc-entry-body"></tbody>
         </table>
