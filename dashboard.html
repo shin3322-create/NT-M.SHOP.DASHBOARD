@@ -3299,10 +3299,15 @@ async function loadRCEntry(){
     const id = rcDocId(personId, date);
     try{
       const snap = await db.doc("reception_days/"+id).get();
-      if(snap.exists) rcEntries = (snap.data().entries || []).map(e=>({...e}));
+      if(snap.exists) rcEntries = sortRCByTime((snap.data().entries || []).map(e=>({...e})));
     }catch(err){ console.warn(err); }
   }
   renderRCEntryTable();
+}
+/* 리셉션 목록을 예약 시간 순으로 정렬 (빠른 시간이 위, 시간 없는 줄은 맨 아래) */
+function sortRCByTime(list){
+  const key = (e)=> timeOnly(e.resv_dt) || "99:99";
+  return list.map((e,i)=>({e,i})).sort((a,b)=> key(a.e).localeCompare(key(b.e)) || a.i-b.i).map(x=>x.e);
 }
 function timeOnly(v){
   if(!v) return "";
@@ -3409,12 +3414,12 @@ async function saveRCEntry(){
   const date = document.getElementById("rc-date").value;
   if(!personId || !date){ showToast("리셉션 매니저와 일자를 선택해 주세요"); return; }
   if(!db){ showToast("저장 기능을 사용할 수 없습니다"); return; }
-  const cleaned = rcEntries.filter(e=>e.customer || e.car_no || e.resv_no);
+  const cleaned = sortRCByTime(rcEntries.filter(e=>e.customer || e.car_no || e.resv_no));
   cleaned.forEach(e=>{
     // 포커스 아웃 없이 저장 버튼을 눌렀을 때를 대비한 안전장치: MM-DD로 남아있으면 YYYY-MM-DD로 변환
     if(/^\d{2}-\d{2}$/.test(e.rebook_dt||"")) e.rebook_dt = inferYearForMD(e.rebook_dt, date);
   });
-  if(cleaned.length !== rcEntries.length){ rcEntries = cleaned; renderRCEntryTable(); }
+  if(cleaned.length !== rcEntries.length || cleaned.some((e,i)=>e!==rcEntries[i])){ rcEntries = cleaned; renderRCEntryTable(); }
   const p = roster.reception.find(p=>p.id===personId);
   const id = rcDocId(personId, date);
   const summary = summarizeReception(cleaned);
