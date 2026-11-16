@@ -29,9 +29,24 @@
   }
   /* 업무시간(08~18시)에는 DMS 자체 jQuery로 요청 → DMS가 '사용 중'으로 인식해 자동 로그아웃 시간이 연장되도록 함
      업무시간 밖에는 일반 fetch로 요청 → 로그아웃 시간에 영향 없음 */
-  const WORK_START = 8, WORK_END = 18;
-  const kstHour = () => new Date(Date.now() + 9*3600e3).getUTCHours();
-  const inWork = () => { const h = kstHour(); return h >= WORK_START && h < WORK_END; };
+  /* 근무시간 (원 지정)
+     - 월~금 08:30 ~ 18:30
+     - 토요일은 그 달의 2·3·4번째 토요일만 08:30 ~ 16:00
+     - 일요일·그 외 토요일은 근무 없음
+     근무시간에만 DMS 조회와 로그인 유지를 하고, 근무시간이 끝나면 DMS에 아무 요청도 보내지 않음
+     → DMS 자체 시간 제한(약 1시간)이 지나면 자동으로 로그아웃됨 */
+  function inWork(){
+    const k = new Date(Date.now() + 9*3600e3);              // 한국 시간
+    const day = k.getUTCDay();                               // 0=일 … 6=토
+    const mins = k.getUTCHours()*60 + k.getUTCMinutes();
+    const START = 8*60 + 30;
+    if (day >= 1 && day <= 5) return mins >= START && mins < 18*60 + 30;
+    if (day === 6) {
+      const nth = Math.ceil(k.getUTCDate() / 7);            // 그 달의 몇 번째 토요일인지
+      return nth >= 2 && nth <= 4 && mins >= START && mins < 16*60;
+    }
+    return false;
+  }
   function postText(url, view, body){
     const $ = window.jQuery;
     if (inWork() && $ && $.ajax){
@@ -62,6 +77,7 @@
   async function run(reason){
     if (running) return; running = true;
     try {
+      if (!inWork()) { post({ type: "status", ok: true, msg: "근무시간 외 — 자동 입력 쉬는 중 (DMS는 약 1시간 뒤 자동 로그아웃)" }); return; }
       if (!ajaxToken()) { post({ type: "status", ok: false, msg: "DMS 로그인 대기 중" }); return; }
       const today = ymd(new Date());
       const ro = await fetchAll(RO_URL, RO_VIEW, {

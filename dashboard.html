@@ -1456,6 +1456,16 @@ function countUnshippedSA(branchId, filterFn){
   return count;
 }
 
+/* 근무시간 (확장팩과 동일): 월~금 08:30~18:30, 2·3·4번째 토요일 08:30~16:00
+   시작 직후 20분은 첫 실행을 기다리므로 경고하지 않음 */
+function dmsWorkTimeKST(){
+  const k = new Date(Date.now() + 9*3600e3);
+  const day = k.getUTCDay(), mins = k.getUTCHours()*60 + k.getUTCMinutes();
+  const S = 8*60 + 30 + 20;
+  if(day >= 1 && day <= 5) return mins >= S && mins < 18*60 + 30;
+  if(day === 6){ const nth = Math.ceil(k.getUTCDate()/7); return nth >= 2 && nth <= 4 && mins >= S && mins < 16*60; }
+  return false;
+}
 /* DMS 확장팩 마지막 자동 입력 시각 표시 (업무시간에 20분 넘게 멈추면 빨간색) */
 function startDmsSyncStatus(){
   const el = document.getElementById("dms-sync-status");
@@ -1468,8 +1478,7 @@ function startDmsSyncStatus(){
       const t = new Date(data);
       const mins = Math.round((Date.now() - t.getTime())/60000);
       const hm = t.toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Asia/Seoul"});
-      const h = nowKSTHour();
-      const late = mins > 20 && h >= 8 && h < 19;
+      const late = mins > 20 && dmsWorkTimeKST();
       el.textContent = late ? `⚠ DMS 자동입력 멈춤 (마지막 ${hm}) · DMS 로그인 확인` : `DMS 자동입력 ${hm}`;
       el.style.color = late ? "#d93025" : "";
       el.style.fontWeight = late ? "700" : "";
