@@ -273,6 +273,17 @@ async function sync(ro, resv){
   return { ro: ro.length, resv: resv.length, saDocs: res.sa, rcDocs: res.rc, skipped: skipped.length };
 }
 
+/* ---------- 인보이스 미종료 RO 목록 → 서버(config_kv 'dms_open_ro') ---------- */
+let lastOpenMsg = "";
+async function pushOpenRo(rows){
+  const c = await cfg();
+  if (!c.token) return;
+  const list = rows.map(r => ({ ro_no: s(r.ro), stat: s(r.stat), branch: BRANCH_BY_NAME[s(r.brch)] || "", sa_name: s(r.sa),
+                                car_no: s(r.car), open_date: datePart(r.pub) || datePart(r.acpt) }))
+                   .filter(r => r.branch && r.open_date);
+  await rpc(c, "dms_push_open_ro", { p_token: c.token, p_rows: list });
+}
+
 async function setStatus(st){
   await chrome.storage.local.set({ status: Object.assign({ at: new Date().toISOString() }, st) });
   chrome.action.setBadgeText({ text: st.ok ? "" : "!" });
@@ -285,7 +296,13 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (p.type === "status") { setStatus({ ok: false, msg: p.msg }); return; }
   if (p.type === "data") {
     sync(p.ro || [], p.resv || [])
-      .then(r => setStatus({ ok: true, msg: `RO ${r.ro}건 · 예약 ${r.resv}건 확인 → SA ${r.saDocs}건 · 리셉션 ${r.rcDocs}건 갱신` + (r.skipped ? ` (SA 미매칭 ${r.skipped}건 건너뜀)` : "") }))
+      .then(async r => {
+        if (Array.isArray(p.openRo)) {
+          try { await pushOpenRo(p.openRo); lastOpenMsg = ` · 미종료 RO ${p.openRo.length}건`; }
+          catch (e) { lastOpenMsg = " · 미종료 RO 저장 실패(서버 업데이트 필요)"; }
+        }
+        setStatus({ ok: true, msg: `RO ${r.ro}건 · 예약 ${r.resv}건 확인 → SA ${r.saDocs}건 · 리셉션 ${r.rcDocs}건 갱신` + (r.skipped ? ` (SA 미매칭 ${r.skipped}건 건너뜀)` : "") + lastOpenMsg });
+      })
       .catch(e => setStatus({ ok: false, msg: String(e.message || e) }));
   }
 });

@@ -10,7 +10,9 @@
   const RO_DAYS_BACK = 7;                       // RO: RO발행일 기준 최근 7일
   const RV_DAYS_BACK = 3, RV_DAYS_FWD = 7;      // 예약: 예약일 기준 -3일 ~ +7일
   const PAGE = 1000;
-  let running = false;
+  const OPEN_DAYS_BACK = 180;                   // 미종료 RO: 최근 180일 발행분 중 인보이스 미완료
+  const OPEN_EVERY_MS = 30 * 60 * 1000;         // 미종료 RO 조회는 30분마다 (DMS 부담 줄이기)
+  let running = false, lastOpenAt = 0;
   const RV_BASE = {
         sBrands: [], sSeriesList: [], sCarNo: "", sVinNo: "", sCustNm: "", sResvCustNm: "", sRoNo: "", sResvNo: "", sCustTp: "",
         sExcellence: "", sVocRcv: "", sDlrCd: DEALER, sBrchCdList: BRANCHES, sSalDlrCd: "", sSalBrchCdList: [], sAcepters: [],
@@ -74,17 +76,31 @@
     // 개인정보 최소화: 전화번호 등은 전달하지 않음
     return out.map(r => { const c = Object.assign({}, r); delete c.custPhone; delete c.resvPhone; delete c.resvNm; delete c.custOpi; delete c.roNote; delete c.ordDlrOpinionMtr; delete c.inDlrOpinionMtr; return c; });
   }
+  const RO_BASE = { sBrands: [], sVinNo: "", sCarNo: "", sSeriesList: [], sCustTp: "", sCustNo: "", sCustNm: "", sDlrCd: DEALER,
+        sBrchCdList: BRANCHES, sSaList: [], sTechNms: [], sRoNo: "", sRoStat: "", sSvcTypes: [], sCustCarYn: "", sDqRcrNoti: "",
+        sCalcTpCd: "", sCalcTpCds: [], sRclTcApply: "", sCampnApply: "", sCupnApply: "", sSvcTp: "", sExcludeCaseTargetYn: "N", sLeadTimeUnit: "HOURS" };
+  /* 인보이스 미종료 RO: 'RO취소'·'인보이스 완료'가 아닌 RO만 골라 필요한 항목만 전달 */
+  async function fetchOpenRo(today){
+    const rows = await fetchAll(RO_URL, RO_VIEW, Object.assign({}, RO_BASE, {
+      sSelectDt: "csltEndDt", sSearchStartDt: startIso(ymd(addDays(-OPEN_DAYS_BACK))), sSearchEndDt: endIso(today) }));
+    const seen = new Set(), out = [];
+    for (const r of rows){
+      const stat = String(r.roStat || "").trim(), no = String(r.roNm || "").trim();
+      if (!no || stat === "RO취소" || stat === "인보이스 완료" || seen.has(no)) continue;
+      seen.add(no);
+      out.push({ ro: no, stat, brch: r.asBrch || "", sa: r.chrgSaNm || "", car: r.carNo || "",
+                 pub: String(r.publishDt || "").slice(0, 10), acpt: String(r.carAcptDtime || "").slice(0, 10) });
+    }
+    return out;
+  }
   async function run(reason){
     if (running) return; running = true;
     try {
       if (!inWork()) { post({ type: "status", ok: true, msg: "근무시간 외 — 자동 입력 쉬는 중 (DMS는 약 1시간 뒤 자동 로그아웃)" }); return; }
       if (!ajaxToken()) { post({ type: "status", ok: false, msg: "DMS 로그인 대기 중" }); return; }
       const today = ymd(new Date());
-      const ro = await fetchAll(RO_URL, RO_VIEW, {
-        sSelectDt: "csltEndDt", sSearchStartDt: startIso(ymd(addDays(-RO_DAYS_BACK))), sSearchEndDt: endIso(today),
-        sBrands: [], sVinNo: "", sCarNo: "", sSeriesList: [], sCustTp: "", sCustNo: "", sCustNm: "", sDlrCd: DEALER,
-        sBrchCdList: BRANCHES, sSaList: [], sTechNms: [], sRoNo: "", sRoStat: "", sSvcTypes: [], sCustCarYn: "", sDqRcrNoti: "",
-        sCalcTpCd: "", sCalcTpCds: [], sRclTcApply: "", sCampnApply: "", sCupnApply: "", sSvcTp: "", sExcludeCaseTargetYn: "N", sLeadTimeUnit: "HOURS" });
+      const ro = await fetchAll(RO_URL, RO_VIEW, Object.assign({}, RO_BASE, {
+        sSelectDt: "csltEndDt", sSearchStartDt: startIso(ymd(addDays(-RO_DAYS_BACK))), sSearchEndDt: endIso(today) }));
 
       // ① 예약일 기준 (-3일 ~ +7일)
       const byResv = await fetchAll(RV_URL, RV_VIEW, Object.assign({}, RV_BASE, {
@@ -94,7 +110,11 @@
         sSelectDt: "carAcptDt", sSearchStartDt: startIso(ymd(addDays(-RV_DAYS_BACK))), sSearchEndDt: endIso(today) }));
       const seen = new Set(); const resv = [];
       for (const r of [...byAcpt, ...byResv]) { const k = r.resvBrch + "|" + r.resvNo; if (seen.has(k)) continue; seen.add(k); resv.push(r); }  // 예약번호는 지점마다 따로 매겨짐
-      post({ type: "data", reason, ro, resv, at: new Date().toISOString() });
+      let openRo = null;
+      if (reason !== "timer" || Date.now() - lastOpenAt >= OPEN_EVERY_MS){
+        try { openRo = await fetchOpenRo(today); lastOpenAt = Date.now(); } catch (e) { openRo = null; }
+      }
+      post({ type: "data", reason, ro, resv, openRo, at: new Date().toISOString() });
     } catch (e) {
       post({ type: "status", ok: false, msg: String(e.message || e) });
     } finally { running = false; }

@@ -410,6 +410,14 @@
 
     <div class="card">
       <div class="section-head">
+        <h2>인보이스 미종료 RO (7일 초과)</h2>
+        <span class="hint" id="open-ro-hint">RO 발행 후 7일이 지나도록 인보이스 완료가 안 된 RO · DMS 확장팩이 30분마다 갱신 · 인보이스를 완료하면 자동으로 사라집니다</span>
+      </div>
+      <div id="open-ro-wrap" style="margin-top:10px;display:flex;flex-direction:column;gap:16px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-head">
         <h2>로너카 사용 현황</h2>
         <span class="hint" id="loaner-summary-hint"></span>
       </div>
@@ -841,6 +849,7 @@ const REOPEN_REASONS = ["부품대기","재 점검","재수리","고객 약속",
 let db = null;
 let roster = DEFAULT_ROSTER;
 let targets = { ...DEFAULT_TARGETS };
+let dmsOpenRo = null; // DMS 확장팩이 저장한 인보이스 미종료 RO { at, rows:[{ro_no,stat,branch,sa_name,car_no,open_date}] }
 let receptionDocs = new Map();   // id -> data   (current month)
 let saDocs = new Map();          // id -> data   (current month)
 let loanerDocs = new Map();      // id -> data   (all loaner cars, all branches)
@@ -1202,6 +1211,11 @@ function subscribeConfig(){
       }
       renderAll();
     }, err=>console.warn("targets snapshot error", err));
+
+    db.doc("config/dms_open_ro").onSnapshot(snap=>{
+      dmsOpenRo = (snap.exists && snap.data()) ? snap.data() : null;
+      renderOpenRoTable();
+    }, err=>console.warn("open ro snapshot error", err));
 
   }catch(err){ console.warn(err); }
 }
@@ -1573,6 +1587,7 @@ function renderDashboard(){
   renderInputIssues();
   renderReturnTable(today);
   renderStayingTable();
+  renderOpenRoTable();
   renderLoanerSummary();
   renderLineChart(today);
   renderServiceBarChart(today);
@@ -1709,6 +1724,57 @@ function collectStayingVehicles(){
   }
   rows.sort((a,b)=> a.date.localeCompare(b.date) || a.ro_no.localeCompare(b.ro_no));
   return rows;
+}
+const OPEN_RO_DAYS = 7; // 이 일수를 넘긴 미종료 RO만 표시
+function renderOpenRoTable(){
+  const wrap = document.getElementById("open-ro-wrap");
+  if(!wrap) return;
+  const hint = document.getElementById("open-ro-hint");
+  if(!dmsOpenRo || !Array.isArray(dmsOpenRo.rows)){
+    wrap.innerHTML = '<div class="hint">아직 DMS 확장팩에서 받은 자료가 없습니다 (확장팩 1.0.10 이상 + 서버 업데이트 필요)</div>';
+    return;
+  }
+  const today = todayKST();
+  const dayDiff = (d)=> Math.round((new Date(today+"T00:00:00Z") - new Date(d+"T00:00:00Z"))/86400000);
+  const rows = dmsOpenRo.rows
+    .map(r=>({ ...r, days: dayDiff(r.open_date) }))
+    .filter(r=> r.days > OPEN_RO_DAYS)
+    .sort((a,b)=> b.days - a.days || String(a.ro_no).localeCompare(String(b.ro_no)));
+  if(hint && dmsOpenRo.at){
+    const t = new Date(dmsOpenRo.at);
+    const when = t.toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Asia/Seoul"});
+    hint.textContent = `RO 발행 후 ${OPEN_RO_DAYS}일이 지나도록 인보이스 완료가 안 된 RO · 마지막 갱신 ${when} · 인보이스를 완료하면 자동으로 사라집니다`;
+  }
+  const byBranch = new Map();
+  roster.branches.forEach(b=> byBranch.set(b.id, []));
+  rows.forEach(r=>{ if(byBranch.has(r.branch)) byBranch.get(r.branch).push(r); });
+  wrap.innerHTML = roster.branches.map(b=>{
+    const list = byBranch.get(b.id) || [];
+    return `
+      <div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span class="pill ${b.id}">${esc(b.name)}</span>
+          <span class="hint">${list.length}건</span>
+        </div>
+        ${list.length ? `<div class="table-wrap"><table class="data">
+          <thead><tr><th>RO 번호</th><th>담당 SA</th><th>RO 발행일</th><th class="num">경과일</th><th>RO 상태</th><th>차량번호</th></tr></thead>
+          <tbody>
+            ${list.map(r=>{
+              const over = r.days > 30;
+              const style = over ? ' style="color:var(--critical);font-weight:700;"' : (r.days > 14 ? ' style="color:var(--warning);font-weight:700;"' : "");
+              return `<tr>
+                <td>${esc(r.ro_no)}</td>
+                <td>${esc(r.sa_name||"")}</td>
+                <td>${esc(r.open_date)}</td>
+                <td class="num"${style}>${r.days}일</td>
+                <td>${esc(r.stat||"")}</td>
+                <td>${esc(r.car_no||"")}</td>
+              </tr>`;
+            }).join("")}
+          </tbody>
+        </table></div>` : '<div class="hint">해당 RO 없음</div>'}
+      </div>`;
+  }).join("");
 }
 function renderStayingTable(){
   const wrap = document.getElementById("staying-wrap");
