@@ -67,6 +67,19 @@ begin
 end $$;
 revoke all on function public.dms_push_open_ro(text, jsonb, jsonb) from public;
 grant execute on function public.dms_push_open_ro(text, jsonb, jsonb) to anon, authenticated;
+
+-- 인보이스 미종료 RO 사유 (수리대기 / 부품대기 / 기타 + 메모) — 대시보드에서 승인된 직원이 입력
+create table if not exists public.open_ro_notes (
+  ro_no text primary key, reason text not null default '', note text not null default '',
+  updated_by text, updated_at timestamptz not null default now());
+alter table public.open_ro_notes enable row level security;
+drop policy if exists open_ro_notes_select on public.open_ro_notes;
+drop policy if exists open_ro_notes_write on public.open_ro_notes;
+create policy open_ro_notes_select on public.open_ro_notes for select using ( public.is_approved() );
+create policy open_ro_notes_write on public.open_ro_notes for all using ( public.is_approved() ) with check ( public.is_approved() );
+grant select, insert, update, delete on public.open_ro_notes to authenticated;
+do $$ begin alter publication supabase_realtime add table public.open_ro_notes; exception when others then null; end $$;
+
 notify pgrst, 'reload schema';
 SQL
-echo "완료! 미종료 RO 저장 창구 + RO 재발행 의심 확인이 설정되었습니다."
+echo "완료! 미종료 RO 저장 창구 + RO 재발행 의심 확인 + 미종료 사유 저장이 설정되었습니다."

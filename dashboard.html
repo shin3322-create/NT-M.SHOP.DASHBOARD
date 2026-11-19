@@ -267,6 +267,8 @@
   .stay-status-btn[data-status="부품대기"].active{ background:var(--warning-bg); border-color:var(--warning); color:var(--warning); }
   .stay-status-btn[data-status="수리 중"].active{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
   .stay-status-btn[data-status="작업중"].active{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .stay-status-btn[data-status="수리대기"].active{ background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
+  .stay-status-btn[data-status="기타"].active{ background:var(--critical-bg); border-color:var(--critical); color:var(--critical); }
   .stay-status-btn[data-status="수리완료"].active{ background:var(--good-bg); border-color:var(--good); color:var(--good); }
 
   .loaner-check-btn{
@@ -858,6 +860,7 @@ let db = null;
 let roster = DEFAULT_ROSTER;
 let targets = { ...DEFAULT_TARGETS };
 let dmsReopenRo = null; // DMS 확장팩 + 서버가 계산한 RO 재발행 의심 { at, rows:[...] }
+let openRoNotes = new Map(); // ro_no -> { reason, note, updated_by, updated_at } (open_ro_notes 표)
 let dmsOpenRo = null; // DMS 확장팩이 저장한 인보이스 미종료 RO { at, rows:[{ro_no,stat,branch,sa_name,car_no,open_date}] }
 let receptionDocs = new Map();   // id -> data   (current month)
 let saDocs = new Map();          // id -> data   (current month)
@@ -1225,6 +1228,8 @@ function subscribeConfig(){
       dmsOpenRo = (snap.exists && snap.data()) ? snap.data() : null;
       renderOpenRoTable();
     }, err=>console.warn("open ro snapshot error", err));
+
+    subscribeOpenRoNotes();
 
     db.doc("config/dms_reopen_ro").onSnapshot(snap=>{
       dmsReopenRo = (snap.exists && snap.data()) ? snap.data() : null;
@@ -1740,6 +1745,47 @@ function collectStayingVehicles(){
   rows.sort((a,b)=> a.date.localeCompare(b.date) || a.ro_no.localeCompare(b.ro_no));
   return rows;
 }
+const OPEN_RO_REASONS = ["수리대기","부품대기","기타"];
+async function loadOpenRoNotes(){
+  if(!supabaseClient) return;
+  try{
+    const { data, error } = await supabaseClient.from("open_ro_notes").select("*");
+    if(error) throw error;
+    openRoNotes = new Map((data||[]).map(r=>[r.ro_no, r]));
+    // 메모 입력 중이면 화면을 다시 그리지 않음 (입력 내용이 지워지지 않게)
+    if(document.activeElement && document.activeElement.classList && document.activeElement.classList.contains("open-ro-note")) return;
+    renderOpenRoTable();
+  }catch(e){ console.warn("open_ro_notes load error (서버 업데이트 필요)", e); }
+}
+let openRoNotesTimer = null;
+function subscribeOpenRoNotes(){
+  if(!supabaseClient) return;
+  loadOpenRoNotes();
+  try{
+    supabaseClient.channel("open_ro_notes")
+      .on("postgres_changes", { event:"*", schema:"public", table:"open_ro_notes" }, ()=>{
+        clearTimeout(openRoNotesTimer); openRoNotesTimer = setTimeout(loadOpenRoNotes, 500);
+      }).subscribe();
+  }catch(e){ console.warn(e); }
+  document.addEventListener("visibilitychange", ()=>{ if(!document.hidden) loadOpenRoNotes(); });
+}
+async function saveOpenRoNote(roNo, patch){
+  if(!supabaseClient) return;
+  const cur = openRoNotes.get(roNo) || { ro_no: roNo, reason:"", note:"" };
+  const row = { ro_no: roNo, reason: cur.reason||"", note: cur.note||"", ...patch,
+                updated_by: (myProfile?.display_name || myProfile?.email || ""), updated_at: new Date().toISOString() };
+  openRoNotes.set(roNo, row);
+  renderOpenRoTable();
+  try{
+    const { error } = await supabaseClient.from("open_ro_notes").upsert(row);
+    if(error) throw error;
+    showToast(`${roNo} 사유가 저장되었습니다`);
+  }catch(e){
+    console.warn(e);
+    showToast("사유 저장 실패 — 서버 업데이트(12_open_ro_setup.bat)가 필요할 수 있습니다");
+    loadOpenRoNotes();
+  }
+}
 const OPEN_RO_DAYS = 7; // 이 일수를 넘긴 미종료 RO만 표시
 function renderOpenRoTable(){
   const wrap = document.getElementById("open-ro-wrap");
@@ -1760,6 +1806,7 @@ function renderOpenRoTable(){
     const when = t.toLocaleString("ko-KR",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Asia/Seoul"});
     hint.textContent = `RO 발행 후 ${OPEN_RO_DAYS}일이 지나도록 인보이스 완료가 안 된 RO · 마지막 갱신 ${when} · 인보이스를 완료하면 자동으로 사라집니다`;
   }
+  const ro = (typeof isReadOnlyRole === "function") && isReadOnlyRole();
   const byBranch = new Map();
   roster.branches.forEach(b=> byBranch.set(b.id, []));
   rows.forEach(r=>{ if(byBranch.has(r.branch)) byBranch.get(r.branch).push(r); });
@@ -1772,9 +1819,10 @@ function renderOpenRoTable(){
           <span class="hint">${list.length}건</span>
         </div>
         ${list.length ? `<div class="table-wrap"><table class="data">
-          <thead><tr><th>RO 번호</th><th>담당 SA</th><th>RO 발행일</th><th class="num">경과일</th><th>RO 상태</th><th>차량번호</th></tr></thead>
+          <thead><tr><th>RO 번호</th><th>담당 SA</th><th>RO 발행일</th><th class="num">경과일</th><th>RO 상태</th><th>차량번호</th><th>사유</th><th style="width:200px;">메모</th></tr></thead>
           <tbody>
             ${list.map(r=>{
+              const n = openRoNotes.get(r.ro_no) || {};
               const over = r.days > 30;
               const style = over ? ' style="color:var(--critical);font-weight:700;"' : (r.days > 14 ? ' style="color:var(--warning);font-weight:700;"' : "");
               return `<tr>
@@ -1784,12 +1832,27 @@ function renderOpenRoTable(){
                 <td class="num"${style}>${r.days}일</td>
                 <td>${esc(r.stat||"")}</td>
                 <td>${esc(r.car_no||"")}</td>
+                <td>
+                  <div class="stay-status-group">
+                    ${OPEN_RO_REASONS.map(k=>`<button type="button" class="stay-status-btn open-ro-reason ${n.reason===k?'active':''}" data-ro="${esc(r.ro_no)}" data-status="${esc(k)}" ${ro?'disabled':''}>${esc(k)}</button>`).join("")}
+                  </div>
+                </td>
+                <td><input type="text" class="open-ro-note" data-ro="${esc(r.ro_no)}" value="${esc(n.note||"")}" placeholder="${n.reason==='기타'?'기타 사유 입력 (필수)':'메모 (선택)'}" style="width:100%;${n.reason==='기타'&&!n.note?'border-color:var(--critical);':''}" ${ro?'disabled':''}></td>
               </tr>`;
             }).join("")}
           </tbody>
         </table></div>` : '<div class="hint">해당 RO 없음</div>'}
       </div>`;
   }).join("");
+  wrap.querySelectorAll(".open-ro-reason").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const cur = (openRoNotes.get(btn.dataset.ro)||{}).reason || "";
+      saveOpenRoNote(btn.dataset.ro, { reason: cur === btn.dataset.status ? "" : btn.dataset.status });
+    });
+  });
+  wrap.querySelectorAll(".open-ro-note").forEach(inp=>{
+    inp.addEventListener("change", ()=> saveOpenRoNote(inp.dataset.ro, { note: inp.value.trim() }));
+  });
 }
 function renderReopenRoTable(){
   const tbl = document.getElementById("table-reopen-ro");
