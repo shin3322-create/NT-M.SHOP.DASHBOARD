@@ -83,14 +83,18 @@
   async function fetchOpenRo(today){
     const rows = await fetchAll(RO_URL, RO_VIEW, Object.assign({}, RO_BASE, {
       sSelectDt: "csltEndDt", sSearchStartDt: startIso(ymd(addDays(-OPEN_DAYS_BACK))), sSearchEndDt: endIso(today) }));
-    const seen = new Set(), out = [];
+    const seen = new Set(), out = [], all = [];
     for (const r of rows){
       const stat = String(r.roStat || "").trim(), no = String(r.roNm || "").trim();
-      if (!no || stat === "RO취소" || stat === "인보이스 완료" || seen.has(no)) continue;
+      if (!no || seen.has(no)) continue;
       seen.add(no);
-      out.push({ ro: no, stat, brch: r.asBrch || "", sa: r.chrgSaNm || "", car: r.carNo || "",
-                 pub: String(r.publishDt || "").slice(0, 10), acpt: String(r.carAcptDtime || "").slice(0, 10) });
+      const pub = String(r.publishDt || "").slice(0, 10), acpt = String(r.carAcptDtime || "").slice(0, 10);
+      // 전체 RO(짧은 키): 같은 차량 재발행 확인용 — r:RO번호 c:차량번호 b:지점 s:SA d:발행일 t:상태
+      all.push({ r: no, c: r.carNo || "", b: r.asBrch || "", s: r.chrgSaNm || "", d: pub || acpt, t: stat });
+      if (stat === "RO취소" || stat === "인보이스 완료") continue;
+      out.push({ ro: no, stat, brch: r.asBrch || "", sa: r.chrgSaNm || "", car: r.carNo || "", pub, acpt });
     }
+    out.all = all;
     return out;
   }
   async function run(reason){
@@ -114,7 +118,7 @@
       if (reason !== "timer" || Date.now() - lastOpenAt >= OPEN_EVERY_MS){
         try { openRo = await fetchOpenRo(today); lastOpenAt = Date.now(); } catch (e) { openRo = null; }
       }
-      post({ type: "data", reason, ro, resv, openRo, at: new Date().toISOString() });
+      post({ type: "data", reason, ro, resv, openRo, roAll: openRo ? openRo.all : null, at: new Date().toISOString() });
     } catch (e) {
       post({ type: "status", ok: false, msg: String(e.message || e) });
     } finally { running = false; }

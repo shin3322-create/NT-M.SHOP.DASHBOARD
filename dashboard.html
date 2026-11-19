@@ -418,6 +418,14 @@
 
     <div class="card">
       <div class="section-head">
+        <h2>RO 재발행 의심</h2>
+        <span class="hint" id="reopen-ro-hint">7일 넘게 미종료였던 RO가 종료(인보이스 완료·RO취소)된 뒤 7일 안에 같은 차량번호로 새 RO가 발행된 건 · 최근 60일</span>
+      </div>
+      <div class="table-wrap" style="margin-top:10px;"><table class="data" id="table-reopen-ro"></table></div>
+    </div>
+
+    <div class="card">
+      <div class="section-head">
         <h2>로너카 사용 현황</h2>
         <span class="hint" id="loaner-summary-hint"></span>
       </div>
@@ -849,6 +857,7 @@ const REOPEN_REASONS = ["부품대기","재 점검","재수리","고객 약속",
 let db = null;
 let roster = DEFAULT_ROSTER;
 let targets = { ...DEFAULT_TARGETS };
+let dmsReopenRo = null; // DMS 확장팩 + 서버가 계산한 RO 재발행 의심 { at, rows:[...] }
 let dmsOpenRo = null; // DMS 확장팩이 저장한 인보이스 미종료 RO { at, rows:[{ro_no,stat,branch,sa_name,car_no,open_date}] }
 let receptionDocs = new Map();   // id -> data   (current month)
 let saDocs = new Map();          // id -> data   (current month)
@@ -1216,6 +1225,11 @@ function subscribeConfig(){
       dmsOpenRo = (snap.exists && snap.data()) ? snap.data() : null;
       renderOpenRoTable();
     }, err=>console.warn("open ro snapshot error", err));
+
+    db.doc("config/dms_reopen_ro").onSnapshot(snap=>{
+      dmsReopenRo = (snap.exists && snap.data()) ? snap.data() : null;
+      renderReopenRoTable();
+    }, err=>console.warn("reopen ro snapshot error", err));
 
   }catch(err){ console.warn(err); }
 }
@@ -1588,6 +1602,7 @@ function renderDashboard(){
   renderReturnTable(today);
   renderStayingTable();
   renderOpenRoTable();
+  renderReopenRoTable();
   renderLoanerSummary();
   renderLineChart(today);
   renderServiceBarChart(today);
@@ -1775,6 +1790,37 @@ function renderOpenRoTable(){
         </table></div>` : '<div class="hint">해당 RO 없음</div>'}
       </div>`;
   }).join("");
+}
+function renderReopenRoTable(){
+  const tbl = document.getElementById("table-reopen-ro");
+  if(!tbl) return;
+  if(!dmsReopenRo || !Array.isArray(dmsReopenRo.rows)){
+    tbl.innerHTML = '<tbody><tr><td class="hint">아직 확인 자료가 없습니다 (확장팩 1.0.11 이상 + 서버 업데이트 필요 · 설치한 뒤부터 감시가 시작됩니다)</td></tr></tbody>';
+    return;
+  }
+  const bName = (id)=> (roster.branches.find(b=>b.id===id)||{}).name || id || "";
+  const rows = dmsReopenRo.rows;
+  const dt = (v)=>{ if(!v) return ""; const t = new Date(v); return isNaN(t) ? String(v) : t.toLocaleDateString("sv-SE",{timeZone:"Asia/Seoul"}); };
+  if(!rows.length){
+    tbl.innerHTML = '<tbody><tr><td class="hint">해당 건 없음</td></tr></tbody>';
+    return;
+  }
+  tbl.innerHTML = `
+    <thead><tr><th>지점</th><th>차량번호</th><th>기존 RO</th><th>기존 SA</th><th>기존 발행일</th><th class="num">미종료 기간</th><th>종료 상태</th><th>종료 확인일</th><th>새 RO</th><th>새 SA</th><th>새 발행일</th><th>새 RO 상태</th></tr></thead>
+    <tbody>${rows.map(r=>`<tr>
+      <td><span class="pill ${esc(r.branch||"")}">${esc(bName(r.branch))}</span></td>
+      <td>${esc(r.car_no||"")}</td>
+      <td>${esc(r.old_ro||"")}</td>
+      <td>${esc(r.old_sa||"")}</td>
+      <td>${esc(r.old_open||"")}</td>
+      <td class="num" style="color:var(--critical);font-weight:700;">${esc(String(r.old_days??""))}일</td>
+      <td${r.closed_stat==="RO취소"?' style="color:var(--critical);font-weight:700;"':""}>${esc(r.closed_stat||"")}</td>
+      <td>${esc(dt(r.closed_at))}</td>
+      <td>${esc(r.new_ro||"")}</td>
+      <td>${esc(r.new_sa||"")}</td>
+      <td>${esc(r.new_open||"")}</td>
+      <td>${esc(r.new_stat||"")}</td>
+    </tr>`).join("")}</tbody>`;
 }
 function renderStayingTable(){
   const wrap = document.getElementById("staying-wrap");
